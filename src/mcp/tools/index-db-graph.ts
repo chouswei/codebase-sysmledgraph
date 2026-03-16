@@ -4,7 +4,7 @@
 
 import { getDbPathForIndexedPath } from '../../storage/location.js';
 import { addToRegistry } from '../../storage/registry.js';
-import { openGraphStore } from '../../graph/graph-store.js';
+import { getCachedOrOpenGraphStore, invalidateGraphStoreCache } from '../../graph/graph-store.js';
 import { runIndexer } from '../../indexer/indexer.js';
 
 export interface IndexDbGraphArgs {
@@ -19,7 +19,8 @@ export async function handleIndexDbGraph(args: IndexDbGraphArgs): Promise<{ ok: 
   }
   for (const p of paths) {
     const dbPath = getDbPathForIndexedPath(p);
-    const store = await openGraphStore(dbPath);
+    invalidateGraphStoreCache(dbPath);
+    const store = await getCachedOrOpenGraphStore(dbPath);
     const result = await runIndexer(store, { roots: [p] });
     if (!result.ok) return { ok: false, error: result.error };
     await addToRegistry(p);

@@ -5,7 +5,7 @@
 
 import { listIndexedPaths } from '../../storage/list.js';
 import { getDbPathForIndexedPath } from '../../storage/location.js';
-import { openGraphStore } from '../../graph/graph-store.js';
+import { getCachedOrOpenGraphStore } from '../../graph/graph-store.js';
 import { NODE_TABLE } from '../../graph/schema.js';
 import { EDGE_TYPES } from '../../graph/schema.js';
 
@@ -19,7 +19,7 @@ export async function handleContext(args: ContextArgs): Promise<{ ok: boolean; n
     return { ok: false, error: 'No indexed paths; run indexDbGraph first' };
   }
   const dbPath = getDbPathForIndexedPath(paths[0]);
-  const store = await openGraphStore(dbPath);
+  const store = await getCachedOrOpenGraphStore(dbPath);
   const conn = store.getConnection();
   const name = (args.name || '').trim().replace(/\\/g, '\\\\').replace(/'/g, "\\'");
   if (!name) {

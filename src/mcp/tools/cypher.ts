@@ -5,7 +5,7 @@
 
 import { listIndexedPaths } from '../../storage/list.js';
 import { getDbPathForIndexedPath } from '../../storage/location.js';
-import { openGraphStore } from '../../graph/graph-store.js';
+import { getCachedOrOpenGraphStore } from '../../graph/graph-store.js';
 
 export interface CypherArgs {
   query: string;
@@ -17,7 +17,7 @@ export async function handleCypher(args: CypherArgs): Promise<{ ok: boolean; row
     return { ok: false, error: 'No indexed paths; run indexDbGraph first' };
   }
   const dbPath = getDbPathForIndexedPath(paths[0]);
-  const store = await openGraphStore(dbPath);
+  const store = await getCachedOrOpenGraphStore(dbPath);
   const conn = store.getConnection();
   try {
     const result = await conn.query(args.query.trim());

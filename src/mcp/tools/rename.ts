@@ -5,7 +5,7 @@
 
 import { listIndexedPaths } from '../../storage/list.js';
 import { getDbPathForIndexedPath } from '../../storage/location.js';
-import { openGraphStore } from '../../graph/graph-store.js';
+import { getCachedOrOpenGraphStore } from '../../graph/graph-store.js';
 import { NODE_TABLE } from '../../graph/schema.js';
 
 export interface RenameArgs {
@@ -20,7 +20,7 @@ export async function handleRename(args: RenameArgs): Promise<{ ok: boolean; pre
     return { ok: false, error: 'No indexed paths; run indexDbGraph first' };
   }
   const dbPath = getDbPathForIndexedPath(paths[0]);
-  const store = await openGraphStore(dbPath);
+  const store = await getCachedOrOpenGraphStore(dbPath);
   const conn = store.getConnection();
   const symbol = (args.symbol || '').trim().replace(/\\/g, '\\\\').replace(/'/g, "\\'");
   const newName = (args.newName ?? '').trim();

@@ -5,7 +5,7 @@
 
 import { listIndexedPaths } from '../../storage/list.js';
 import { getDbPathForIndexedPath } from '../../storage/location.js';
-import { openGraphStore } from '../../graph/graph-store.js';
+import { getCachedOrOpenGraphStore } from '../../graph/graph-store.js';
 import { NODE_TABLE } from '../../graph/schema.js';
 import { EDGE_TYPES } from '../../graph/schema.js';
 
@@ -20,7 +20,7 @@ export async function handleImpact(args: ImpactArgs): Promise<{ ok: boolean; nod
     return { ok: false, error: 'No indexed paths; run indexDbGraph first' };
   }
   const dbPath = getDbPathForIndexedPath(paths[0]);
-  const store = await openGraphStore(dbPath);
+  const store = await getCachedOrOpenGraphStore(dbPath);
   const conn = store.getConnection();
   const target = (args.target || '').trim().replace(/\\/g, '\\\\').replace(/'/g, "\\'");
   if (!target) {

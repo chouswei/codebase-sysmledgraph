@@ -1,6 +1,7 @@
 /**
  * GraphStore: open/create Kuzu DB, addDocument, addSymbol, addEdge, getConnection.
  * Phase 2 step 7.
+ * Connection cache: one store per dbPath per process to avoid Kuzu "Could not set lock on file".
  */
 
 import * as kuzu from 'kuzu';
@@ -8,6 +9,8 @@ import { mkdir } from 'fs/promises';
 import { dirname } from 'path';
 import type { NodeLabel, SymbolProps } from '../types.js';
 import { getSchemaDdl, NODE_TABLE } from './schema.js';
+
+const storeCache = new Map<string, GraphStore>();
 
 function escapeCypherString(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
@@ -70,4 +73,24 @@ export async function openGraphStore(dbPath: string): Promise<GraphStore> {
     addEdge,
     getConnection: () => conn,
   };
+}
+
+/**
+ * Return cached GraphStore for dbPath or open once and cache it.
+ * Use this in MCP tools so repeated/concurrent requests share one connection per DB (avoids Kuzu lock errors).
+ */
+export async function getCachedOrOpenGraphStore(dbPath: string): Promise<GraphStore> {
+  const cached = storeCache.get(dbPath);
+  if (cached) return cached;
+  const store = await openGraphStore(dbPath);
+  storeCache.set(dbPath, store);
+  return store;
+}
+
+/**
+ * Remove cached store for dbPath. Next getCachedOrOpenGraphStore(dbPath) will open a new connection.
+ * Call before re-index or clean so the next access sees the new or removed DB.
+ */
+export function invalidateGraphStoreCache(dbPath: string): void {
+  storeCache.delete(dbPath);
 }

@@ -5,7 +5,7 @@
 
 import { listIndexedPaths } from '../../storage/list.js';
 import { getDbPathForIndexedPath } from '../../storage/location.js';
-import { openGraphStore } from '../../graph/graph-store.js';
+import { getCachedOrOpenGraphStore } from '../../graph/graph-store.js';
 import { NODE_TABLE } from '../../graph/schema.js';
 
 export interface QueryArgs {
@@ -19,7 +19,7 @@ export async function handleQuery(args: QueryArgs): Promise<{ ok: boolean; nodes
     return { ok: false, error: 'No indexed paths; run indexDbGraph first' };
   }
   const dbPath = getDbPathForIndexedPath(paths[0]);
-  const store = await openGraphStore(dbPath);
+  const store = await getCachedOrOpenGraphStore(dbPath);
   const conn = store.getConnection();
   const q = (args.query || '').trim().toLowerCase();
   if (!q) {
