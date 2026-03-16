@@ -15,7 +15,7 @@
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
-    "analyze": "node bin/cli.js analyze",
+    "analyze": "node dist/bin/cli.js analyze",
     "export-graph": "node scripts/export-graph.mjs"
   },
   "dependencies": {

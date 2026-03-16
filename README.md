@@ -33,6 +33,8 @@ npm install
 npm run build
 ```
 
+**If install fails or is slow:** The dependency set is large (Kuzu, sysml-v2-lsp, etc.), so install can take 1–2+ minutes. On **Windows**, the LSP’s postinstall script is Unix-only and may cause install to fail; use `npm install --ignore-scripts` then `npm run build`. You can then point to a pre-built LSP with **SYSMLLSP_SERVER_PATH**. See [docs/INSTALL_NOTES.md](docs/INSTALL_NOTES.md) for why it’s slow and full workarounds (Kuzu cleanup warnings, using an external LSP when the bundled one has no grammar).
+
 ## Usage
 
 ### CLI
@@ -152,6 +154,7 @@ For ad-hoc Cypher or exporting the graph without MCP:
 - `bin/cli.ts` — CLI entrypoint.
 - `mcp/index.ts` — MCP server entrypoint (stdio).
 - `test/` — Unit and integration tests.
+- `docs/` — [INSTALL_NOTES.md](docs/INSTALL_NOTES.md) (slow install, Windows workarounds), [grammar-and-mapping.md](docs/grammar-and-mapping.md).
 
 ## Development
 
