@@ -8,6 +8,7 @@ import { setStorageRoot, getStorageRoot, getDbPathForIndexedPath } from '../stor
 import { listIndexedPaths } from '../storage/list.js';
 import { cleanIndex } from '../storage/clean.js';
 import { addToRegistry } from '../storage/registry.js';
+import { checkAlignment } from '../storage/alignment.js';
 import { openGraphStore } from '../graph/graph-store.js';
 import { runIndexer } from '../indexer/indexer.js';
 
@@ -25,7 +26,7 @@ export async function cmdAnalyze(paths: string[]): Promise<{ ok: boolean; error?
     const store = await openGraphStore(dbPath);
     const result = await runIndexer(store, { roots: [p] });
     if (!result.ok) return { ok: false, error: result.error };
-    await addToRegistry(p);
+    await addToRegistry(p, new Date().toISOString());
   }
   return { ok: true };
 }
@@ -43,6 +44,26 @@ export async function cmdClean(path: string | undefined): Promise<{ ok: boolean;
   const result = await cleanIndex(path);
   if (!result.ok) return { ok: false, error: result.error };
   return { ok: true };
+}
+
+export async function cmdCheck(): Promise<{ ok: boolean; aligned: boolean; message: string; stalePaths: string[]; error?: string }> {
+  try {
+    const result = await checkAlignment();
+    return {
+      ok: true,
+      aligned: result.aligned,
+      message: result.message,
+      stalePaths: result.stalePaths,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      aligned: false,
+      message: '',
+      stalePaths: [],
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
 
 export function getStorageRootPath(): string {

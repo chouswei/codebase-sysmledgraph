@@ -1,0 +1,5 @@
+## Changes
+
+- **Modelbase alignment** — Indexer pipeline explicitly aligned to behaviour model **IndexPipelineStates** (discovering → loadOrdering → parsing → mapping → writing). New `src/indexer/pipeline-phases.ts` exports phase names; `src/indexer/indexer.ts` structured with phase comments. Docs: `docs/IMPLEMENTATION_PLAN.md` (plan step → implementation traceability, behaviour pipeline note), `docs/MODELBASE_ALIGNMENT.md` (codebase vs modelbase alignment). README links to both.
+- **Model–codebase alignment** — New CLI **check** and MCP tool **alignment_status** plus resource **sysmledgraph://alignment**: report whether indexed paths have file changes since last index; prompt to re-run analyze. Registry stores **indexedAt** per path. README documents alignment workflow.
+- **README** — Re-index behaviour (merge semantics; clean then analyze for fresh). Future work note (detect_changes, multi-path). Docs list: INSTALL_NOTES, MCP-AND-KUZU, grammar-and-mapping, IMPLEMENTATION_PLAN, MODELBASE_ALIGNMENT.

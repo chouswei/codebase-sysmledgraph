@@ -43,9 +43,10 @@ Run from the project root (after `npm run build`) or via `npx sysmledgraph` if l
 
 | Command | Description |
 |--------|-------------|
-| **analyze** `<paths...>` | Index one or more directory trees: discover `.sysml` and `.kerml`, parse via LSP, build the graph. Paths are resolved to absolute and stored in the registry. |
+| **analyze** `<paths...>` | Index one or more directory trees: discover `.sysml` and `.kerml`, parse via LSP, build the graph. Paths are resolved to absolute and stored in the registry (with last-indexed time for alignment). |
 | **list** | Print all indexed root paths (from the registry). |
 | **clean** `[path]` | Remove the index for a given path, or for **all** indexed paths if `path` is omitted. Deletes the DB file and registry entry. |
+| **check** | Check model–codebase alignment. Exits 0 if no `.sysml`/`.kerml` changes since last index; exits 1 and prints stale path(s) if the codebase no longer aligns with the index. Re-run **analyze** to refresh. |
 
 **Examples:**
 
@@ -64,14 +65,23 @@ npx sysmledgraph clean ./path/to/sysml-models
 
 # Remove all indexed paths
 npx sysmledgraph clean
+
+# Check if models align with index (prompts when files changed after last index)
+npx sysmledgraph check
 ```
+
+**Model–codebase alignment (model-based development):** When you change `.sysml` or `.kerml` files, the index can become out of date. Use **`check`** to see if any indexed path has file changes since last index; if so, the tool prompts you to re-run **analyze** so the graph stays aligned with the models. The MCP resource **sysmledgraph://context** and tool **alignment_status** report the same; the resource **sysmledgraph://alignment** gives a detailed alignment report.
 
 **Options and environment:**
 
 - **`--storage <path>`** — Override the storage root (default: `~/.sysmledgraph`). Same as env **`SYSMEDGRAPH_STORAGE_ROOT`**.
 - **`SYSMLLSP_SERVER_PATH`** — Optional. Path to the sysml-v2-lsp server JS (e.g. `dist/server/server.js`). If unset, the CLI looks in the current workspace/repo first (walk up from cwd), then in sysmledgraph’s `node_modules`.
 
-**Storage layout:** Under the storage root: `registry.json` (list of indexed paths), and `db/<sanitized-path>.kuzu` (one Kuzu database per indexed path). On failure, the CLI writes errors to stderr and exits non-zero.
+**Storage layout:** Under the storage root: `registry.json` (list of indexed paths and last-indexed time per path), and `db/<sanitized-path>.kuzu` (one Kuzu database per indexed path). On failure, the CLI writes errors to stderr and exits non-zero.
+
+**Re-index behaviour:** Running **analyze** (or **indexDbGraph**) again on an already-indexed path **merges** into the existing graph: nodes and edges are upserted by id (MERGE in Cypher). The graph is not cleared first. To start fresh for a path, run **clean** for that path, then **analyze** again.
+
+**Future work (after v1):** detect_changes (Git diff → affected symbols) is not implemented. Multi-path: one DB per path; MCP tools currently use the first indexed path for read operations. See [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) for full plan traceability.
 
 **Kuzu lock:** Only one process should open the same DB at a time. For a full CLI reindex, close Cursor (or disable the sysmledgraph MCP) first to avoid “Could not set lock on file”. See [docs/MCP-AND-KUZU.md](docs/MCP-AND-KUZU.md).
 
@@ -125,11 +135,13 @@ Server name: **sysmledgraph**. The MCP server uses the same storage root as the 
 | **context** | `name` (string) | Get one node by id or name and its adjacent edges (types and targets). |
 | **impact** | `target` (string), `direction` (`"upstream"` \| `"downstream"`, optional) | List nodes that depend on `target` (upstream) or that `target` depends on (downstream). |
 | **rename** | `symbol` (string), `newName` (string), `dry_run` (boolean, optional) | Preview or perform a rename of a symbol across the graph. |
+| **alignment_status** | — | Check model–codebase alignment. Returns whether the index is stale (files changed after last index) and prompts to re-run indexDbGraph or analyze. |
 
 **Resources:**
 
-- **sysmledgraph://context** — Index stats and list of indexed paths (Markdown).
+- **sysmledgraph://context** — Index stats, indexed paths, and alignment hint (Markdown).
 - **sysmledgraph://schema** — Graph node and edge schema (Markdown).
+- **sysmledgraph://alignment** — Model–codebase alignment report; prompts when index is stale (Markdown).
 
 Tools that need a graph (cypher, query, context, impact) use the **first** entry in the registry as the target DB. Ensure at least one path is indexed (CLI or indexDbGraph) before calling them.
 
@@ -148,7 +160,7 @@ For ad-hoc Cypher or exporting the graph without MCP:
 
   The graph uses a single node table **Node**; always use the label in Cypher: `MATCH (n:Node) ...`.
 
-- **Export graph for viewing:** Run `npm run export-graph` (writes `graph-export.json` in the current directory). Open `viewer/view.html` in a browser, click “Load graph.json”, and select that file for a force-directed view; click a node for details. Custom output path: `node scripts/export-graph.mjs path/to/out.json`.
+- **Export graph for viewing:** See **View the graph** below (Option A/B).
 
 ## Project layout
 
@@ -156,7 +168,7 @@ For ad-hoc Cypher or exporting the graph without MCP:
 - `bin/cli.ts` — CLI entrypoint.
 - `mcp/index.ts` — MCP server entrypoint (stdio).
 - `test/` — Unit and integration tests.
-- `docs/` — [INSTALL_NOTES.md](docs/INSTALL_NOTES.md) (slow install, Windows), [MCP-AND-KUZU.md](docs/MCP-AND-KUZU.md) (two MCPs, Kuzu lock, LSP path), [grammar-and-mapping.md](docs/grammar-and-mapping.md).
+- `docs/` — [INSTALL_NOTES.md](docs/INSTALL_NOTES.md) (slow install, Windows), [MCP-AND-KUZU.md](docs/MCP-AND-KUZU.md) (two MCPs, Kuzu lock, LSP path), [grammar-and-mapping.md](docs/grammar-and-mapping.md), [IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) (plan step → implementation traceability), [MODELBASE_ALIGNMENT.md](docs/MODELBASE_ALIGNMENT.md) (codebase vs modelbase alignment).
 
 ## Development
 
@@ -166,7 +178,26 @@ For ad-hoc Cypher or exporting the graph without MCP:
 
 ## View the graph
 
-See **Usage → Querying the graph (scripts)** for the full flow. Short version: `npm run export-graph` writes `graph-export.json`; open `viewer/view.html` in a browser and load that file for a force-directed graph (click nodes for id/label/path).
+Open **`viewer/view.html`** in a browser, then load a `graph-export.json` file. The viewer shows a force-directed graph; click a node to see id, label, and path in the right panel.
+
+### Option A: Minimal export (works with Cursor open)
+
+If you already have a small `graph-export.json` (e.g. from a previous export), open `viewer/view.html`, click **"Load graph.json"**, and choose that file. The graph may be tiny (e.g. one indexed path with little content). To get the full graph, use Option B.
+
+### Option B: Full export (DB must be free)
+
+The export script opens the Kuzu DB, so it conflicts with the MCP. To avoid the lock:
+
+1. **Close Cursor** (so the sysmledgraph MCP stops and releases the DB).
+2. In a terminal:
+   ```bash
+   cd /path/to/sysmledgraph
+   node scripts/export-graph.mjs graph-export.json
+   ```
+   Or: `npm run export-graph` (writes `graph-export.json` in the current directory). Custom path: `node scripts/export-graph.mjs path/to/out.json`.
+3. Reopen Cursor, then open `viewer/view.html` in a browser and load the new `graph-export.json`.
+
+The export includes all nodes and edges (up to the script’s limits) for the first indexed path. After indexing more projects, run the export again to refresh the graph.
 
 ## Schema (graph)
 

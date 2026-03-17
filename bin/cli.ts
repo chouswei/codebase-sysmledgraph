@@ -9,6 +9,7 @@ import {
   cmdAnalyze,
   cmdList,
   cmdClean,
+  cmdCheck,
 } from '../src/cli/commands.js';
 
 program
@@ -52,6 +53,20 @@ program
     const result = await cmdClean(path);
     if (!result.ok) {
       process.stderr.write((result.error ?? 'Unknown error') + '\n');
+      process.exit(1);
+    }
+  });
+
+program
+  .command('check')
+  .description('Check model–codebase alignment; exit non-zero if index is stale')
+  .action(async () => {
+    configureStorageRoot(program.opts().storage);
+    const result = await cmdCheck();
+    console.log(result.message);
+    if (result.stalePaths.length > 0) {
+      process.stderr.write('Stale path(s): ' + result.stalePaths.join(', ') + '\n');
+      process.stderr.write('Re-run: sysmledgraph analyze <path> to refresh.\n');
       process.exit(1);
     }
   });

@@ -1,5 +1,5 @@
 /**
- * Registry of indexed paths: persisted at storage root so list/clean use real paths.
+ * Registry of indexed paths and last-indexed time. Used for list/clean and alignment (model–codebase).
  */
 
 import { readFile, writeFile, mkdir } from 'fs/promises';
@@ -8,8 +8,10 @@ import { getStorageRoot } from './location.js';
 
 const REGISTRY_FILENAME = 'registry.json';
 
-interface Registry {
+export interface RegistryData {
   paths: string[];
+  /** path -> ISO date string when last indexed */
+  indexedAt?: Record<string, string>;
 }
 
 async function registryPath(): Promise<string> {
@@ -17,30 +19,53 @@ async function registryPath(): Promise<string> {
 }
 
 export async function readRegistry(): Promise<string[]> {
+  const data = await readRegistryFull();
+  return data.paths;
+}
+
+export async function readRegistryFull(): Promise<RegistryData> {
   try {
     const raw = await readFile(await registryPath(), 'utf-8');
-    const data = JSON.parse(raw) as Registry;
-    return Array.isArray(data.paths) ? data.paths : [];
+    const data = JSON.parse(raw) as RegistryData;
+    return {
+      paths: Array.isArray(data.paths) ? data.paths : [],
+      indexedAt: data.indexedAt && typeof data.indexedAt === 'object' ? data.indexedAt : {},
+    };
   } catch {
-    return [];
+    return { paths: [], indexedAt: {} };
   }
 }
 
-export async function addToRegistry(path: string): Promise<void> {
-  const paths = await readRegistry();
-  if (paths.includes(path)) return;
-  paths.push(path);
+export async function addToRegistry(path: string, indexedAt?: string): Promise<void> {
+  const data = await readRegistryFull();
+  if (data.paths.includes(path)) {
+    if (indexedAt != null) {
+      data.indexedAt = data.indexedAt ?? {};
+      data.indexedAt[path] = indexedAt;
+      await mkdir(getStorageRoot(), { recursive: true });
+      await writeFile(await registryPath(), JSON.stringify(data, null, 0), 'utf-8');
+    }
+    return;
+  }
+  data.paths.push(path);
+  if (indexedAt != null) {
+    data.indexedAt = data.indexedAt ?? {};
+    data.indexedAt[path] = indexedAt;
+  }
   await mkdir(getStorageRoot(), { recursive: true });
-  await writeFile(await registryPath(), JSON.stringify({ paths }, null, 0), 'utf-8');
+  await writeFile(await registryPath(), JSON.stringify(data, null, 0), 'utf-8');
 }
 
 export async function removeFromRegistry(path: string): Promise<void> {
-  const paths = (await readRegistry()).filter((p) => p !== path);
+  const data = await readRegistryFull();
+  const paths = data.paths.filter((p) => p !== path);
+  const indexedAt = { ...(data.indexedAt ?? {}) };
+  delete indexedAt[path];
   await mkdir(getStorageRoot(), { recursive: true });
-  await writeFile(await registryPath(), JSON.stringify({ paths }, null, 0), 'utf-8');
+  await writeFile(await registryPath(), JSON.stringify({ paths, indexedAt }, null, 0), 'utf-8');
 }
 
 export async function clearRegistry(): Promise<void> {
   await mkdir(getStorageRoot(), { recursive: true });
-  await writeFile(await registryPath(), JSON.stringify({ paths: [] }, null, 0), 'utf-8');
+  await writeFile(await registryPath(), JSON.stringify({ paths: [], indexedAt: {} }, null, 0), 'utf-8');
 }

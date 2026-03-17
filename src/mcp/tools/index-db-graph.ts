@@ -23,7 +23,7 @@ export async function handleIndexDbGraph(args: IndexDbGraphArgs): Promise<{ ok: 
     const store = await getCachedOrOpenGraphStore(dbPath);
     const result = await runIndexer(store, { roots: [p] });
     if (!result.ok) return { ok: false, error: result.error };
-    await addToRegistry(p);
+    await addToRegistry(p, new Date().toISOString());
   }
   return { ok: true, filesProcessed: paths.length };
 }

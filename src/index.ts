@@ -14,4 +14,5 @@ export {
 export { getStorageRoot, setStorageRoot, getDbPathForIndexedPath } from './storage/location.js';
 export { listIndexedPaths } from './storage/list.js';
 export { cleanIndex } from './storage/clean.js';
-export { readRegistry, addToRegistry, removeFromRegistry, clearRegistry } from './storage/registry.js';
+export { readRegistry, readRegistryFull, addToRegistry, removeFromRegistry, clearRegistry } from './storage/registry.js';
+export { checkAlignment } from './storage/alignment.js';

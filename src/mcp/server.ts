@@ -14,8 +14,10 @@ import { handleQuery } from './tools/query.js';
 import { handleContext } from './tools/context.js';
 import { handleImpact } from './tools/impact.js';
 import { handleRename } from './tools/rename.js';
+import { handleAlignmentStatus } from './tools/alignment-status.js';
 import { getContextContent } from './resources/context.js';
 import { getSchemaContent } from './resources/schema.js';
+import { getAlignmentContent } from './resources/alignment.js';
 
 const SERVER_NAME = 'sysmledgraph';
 const SERVER_VERSION = '0.1.0';
@@ -141,7 +143,18 @@ export function createMcpServer(): McpServer {
     return toolResult(text, !result.ok);
   });
 
-  server.registerResource('context', 'sysmledgraph://context', { description: 'Index stats and indexed paths' }, async (_uri, _extra) => {
+  server.registerTool('alignment_status', {
+    description: 'Check if the model index is aligned with the codebase. Prompts when .sysml files changed after last index; re-run analyze or indexDbGraph to align.',
+    inputSchema: z.object({}),
+  }, async () => {
+    const result = await handleAlignmentStatus();
+    const text = result.ok
+      ? JSON.stringify({ ok: true, aligned: result.aligned, message: result.message, stalePaths: result.stalePaths, details: result.details }, null, 2)
+      : JSON.stringify({ ok: false, error: result.error }, null, 2);
+    return toolResult(text, !result.ok);
+  });
+
+  server.registerResource('context', 'sysmledgraph://context', { description: 'Index stats and alignment hint' }, async (_uri, _extra) => {
     const text = await getContextContent();
     return { contents: [{ uri: 'sysmledgraph://context', mimeType: 'text/markdown', text }] };
   });
@@ -149,6 +162,11 @@ export function createMcpServer(): McpServer {
   server.registerResource('schema', 'sysmledgraph://schema', { description: 'Graph node/edge schema' }, async (_uri, _extra) => {
     const text = getSchemaContent();
     return { contents: [{ uri: 'sysmledgraph://schema', mimeType: 'text/markdown', text }] };
+  });
+
+  server.registerResource('alignment', 'sysmledgraph://alignment', { description: 'Model–codebase alignment; prompts when index is stale' }, async (_uri, _extra) => {
+    const text = await getAlignmentContent();
+    return { contents: [{ uri: 'sysmledgraph://alignment', mimeType: 'text/markdown', text }] };
   });
 
   return server;

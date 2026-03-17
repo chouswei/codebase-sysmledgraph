@@ -1,5 +1,6 @@
 /**
- * Index pipeline: discovery → parse → symbol-to-graph → GraphStore.
+ * Index pipeline: discovering → loadOrdering → parsing → mapping → writing.
+ * Aligns with behaviour model SysmledgraphBehaviour::IndexPipelineStates.
  * Phase 2 step 8. R8: on failure report and leave graph unchanged.
  */
 
@@ -19,7 +20,7 @@ export interface IndexResult {
 }
 
 /**
- * Index path(s): discover .sysml, apply load order, parse, write to store.
+ * Index path(s): run pipeline (discovering → loadOrdering → parsing → mapping → writing).
  * Uses a single GraphStore (caller opens it). On failure returns ok: false and does not commit partial state.
  */
 export async function runIndexer(store: GraphStore, options: IndexerOptions): Promise<IndexResult> {
@@ -27,6 +28,7 @@ export async function runIndexer(store: GraphStore, options: IndexerOptions): Pr
   let filesProcessed = 0;
 
   try {
+    // ——— Phase: discovering ———
     const allFiles = await findSysmlFiles({ roots, includeKerml: true });
     if (allFiles.length === 0) {
       return { ok: true, filesProcessed: 0 };
@@ -34,6 +36,7 @@ export async function runIndexer(store: GraphStore, options: IndexerOptions): Pr
 
     const norm = (p: string) => p.replace(/\\/g, '/').toLowerCase();
     for (const root of roots) {
+      // ——— Phase: loadOrdering ———
       const rootNorm = norm(root);
       const underRoot = allFiles.filter((f) => norm(f).startsWith(rootNorm));
       const ordered = await applyLoadOrder(root, underRoot);
@@ -41,7 +44,9 @@ export async function runIndexer(store: GraphStore, options: IndexerOptions): Pr
 
       for (const filePath of ordered) {
         await store.addDocument(filePath, indexedAt);
+        // ——— Phases: parsing + mapping (getSymbolsForFile: LSP documentSymbol → NormalizedSymbol) ———
         const symbols = await getSymbolsForFile(filePath);
+        // ——— Phase: writing ———
         for (const s of symbols) {
           await store.addSymbol(s.label, s.props);
           for (const rel of s.relations) {
