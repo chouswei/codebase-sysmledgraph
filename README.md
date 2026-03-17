@@ -69,7 +69,7 @@ npx sysmledgraph clean
 **Options and environment:**
 
 - **`--storage <path>`** — Override the storage root (default: `~/.sysmledgraph`). Same as env **`SYSMEDGRAPH_STORAGE_ROOT`**.
-- **`SYSMLLSP_SERVER_PATH`** — Optional. Path to the sysml-v2-lsp server JS (e.g. `dist/server/server.js`). If unset, the CLI uses `node_modules/sysml-v2-lsp/dist/server/server.js` (must be built).
+- **`SYSMLLSP_SERVER_PATH`** — Optional. Path to the sysml-v2-lsp server JS (e.g. `dist/server/server.js`). If unset, the CLI looks in local `node_modules` and then walks up from the current working directory (e.g. repo root when run from a subfolder like `tools/sysmledgraph`).
 
 **Storage layout:** Under the storage root: `registry.json` (list of indexed paths), and `db/<sanitized-path>.kuzu` (one Kuzu database per indexed path). On failure, the CLI writes errors to stderr and exits non-zero.
 
@@ -154,7 +154,7 @@ For ad-hoc Cypher or exporting the graph without MCP:
 - `bin/cli.ts` — CLI entrypoint.
 - `mcp/index.ts` — MCP server entrypoint (stdio).
 - `test/` — Unit and integration tests.
-- `docs/` — [INSTALL_NOTES.md](docs/INSTALL_NOTES.md) (slow install, Windows workarounds), [grammar-and-mapping.md](docs/grammar-and-mapping.md).
+- `docs/` — [INSTALL_NOTES.md](docs/INSTALL_NOTES.md) (slow install, Windows), [MCP-AND-KUZU.md](docs/MCP-AND-KUZU.md) (two MCPs, Kuzu lock, LSP path), [grammar-and-mapping.md](docs/grammar-and-mapping.md).
 
 ## Development
 

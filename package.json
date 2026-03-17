@@ -1,6 +1,6 @@
 {
   "name": "sysmledgraph",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Path-only SysML indexer: knowledge graph (Kuzu), MCP server (query, context, impact, rename, cypher), CLI (analyze, list, clean)",
   "type": "module",
   "main": "dist/src/index.js",

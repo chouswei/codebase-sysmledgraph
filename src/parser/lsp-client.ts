@@ -1,7 +1,7 @@
 /**
  * sysml-v2-lsp integration: stdio LSP client.
  * Spawns the LSP server (dist/server/server.js). Uses LSP message framing (Content-Length).
- * Server path: SYSMLLSP_SERVER_PATH or node_modules/sysml-v2-lsp/dist/server/server.js.
+ * Server path: SYSMLLSP_SERVER_PATH, or local node_modules, or walk up from cwd (e.g. repo root).
  */
 
 import { spawn } from 'child_process';
@@ -11,6 +11,20 @@ import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+const LSP_REL_PATH = join('sysml-v2-lsp', 'dist', 'server', 'server.js');
+
+function findLspInNodeModules(startDir: string): string | null {
+  let dir = startDir;
+  for (;;) {
+    const candidate = join(dir, 'node_modules', LSP_REL_PATH);
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
 
 export interface DocumentSymbolLsp {
   name: string;
@@ -25,9 +39,11 @@ async function resolveServerPath(): Promise<string | null> {
   if (process.env.SYSMLLSP_SERVER_PATH) {
     return process.env.SYSMLLSP_SERVER_PATH;
   }
-  const root = join(__dirname, '..', '..', '..');
-  const candidate = join(root, 'node_modules', 'sysml-v2-lsp', 'dist', 'server', 'server.js');
-  if (existsSync(candidate)) return candidate;
+  const packageRoot = join(__dirname, '..', '..', '..');
+  const local = join(packageRoot, 'node_modules', LSP_REL_PATH);
+  if (existsSync(local)) return local;
+  const fromCwd = findLspInNodeModules(process.cwd());
+  if (fromCwd) return fromCwd;
   return null;
 }
 
