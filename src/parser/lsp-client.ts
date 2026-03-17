@@ -1,7 +1,7 @@
 /**
  * sysml-v2-lsp integration: stdio LSP client.
  * Spawns the LSP server (dist/server/server.js). Uses LSP message framing (Content-Length).
- * Server path: SYSMLLSP_SERVER_PATH, or local node_modules, or walk up from cwd (e.g. repo root).
+ * Server path: SYSMLLSP_SERVER_PATH, or existing repo (walk up from cwd) first, then sysmledgraph's node_modules.
  */
 
 import { spawn } from 'child_process';
@@ -39,11 +39,11 @@ async function resolveServerPath(): Promise<string | null> {
   if (process.env.SYSMLLSP_SERVER_PATH) {
     return process.env.SYSMLLSP_SERVER_PATH;
   }
+  const fromRepo = findLspInNodeModules(process.cwd());
+  if (fromRepo) return fromRepo;
   const packageRoot = join(__dirname, '..', '..', '..');
   const local = join(packageRoot, 'node_modules', LSP_REL_PATH);
   if (existsSync(local)) return local;
-  const fromCwd = findLspInNodeModules(process.cwd());
-  if (fromCwd) return fromCwd;
   return null;
 }
 

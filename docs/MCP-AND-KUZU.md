@@ -33,7 +33,7 @@ That was **path resolution**: the sysmledgraph CLI (or MCP) was only looking in 
 
 **Fixes:**
 
-- Resolver now also checks **repo root** (and parent directories) for `node_modules/sysml-v2-lsp/dist/server/server.js`, so when sysmledgraph runs from a subfolder (e.g. `tools/sysmledgraph`), it can find the LSP at the repo root.  
+- Resolver looks for the LSP in this order: **SYSMLLSP_SERVER_PATH** (if set), then the **existing repo** (walk up from the current working directory), then sysmledgraph’s own `node_modules`. So when the MCP runs with cwd = workspace root, the repo’s sysml-v2-lsp is used first.  
 - You can always set **SYSMLLSP_SERVER_PATH** to the absolute path of your built `dist/server/server.js` if you want to point at a specific LSP install.
 
 The sysml-v2 MCP runs from repo root and uses `mcpServer.js`; it doesn’t depend on this resolver and doesn’t block it.
