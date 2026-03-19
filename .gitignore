@@ -1,0 +1,14 @@
+node_modules/
+dist/
+*.log
+.env
+.sysmledgraph/
+.sysmledgraph-*/
+.sysmledgraph-index-result.txt
+graph-export.json
+graph-map*.md
+analyze-out.txt
+.gitnexus
+*.tsbuildinfo
+coverage/
+.cache/

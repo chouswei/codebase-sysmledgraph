@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>sysmledgraph viewer</title>
+  <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, sans-serif; background: #1a1b26; color: #c0caf5; }
+    .toolbar { padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.75rem; background: #16161e; border-bottom: 1px solid #363b54; }
+    .toolbar label { cursor: pointer; }
+    .toolbar input[type="file"] { display: none; }
+    .toolbar .btn { background: #7aa2f7; color: #1a1b26; border: none; padding: 0.35rem 0.75rem; border-radius: 6px; cursor: pointer; font-weight: 600; }
+    .toolbar .btn:hover { background: #89b4fa; }
+    .toolbar .hint { font-size: 0.875rem; opacity: 0.85; }
+    #mynetwork { width: 100%; height: calc(100vh - 48px); }
+    .node-detail { position: fixed; right: 0; top: 48px; bottom: 0; width: 280px; background: #16161e; border-left: 1px solid #363b54; padding: 1rem; overflow: auto; font-size: 0.8125rem; display: none; }
+    .node-detail.visible { display: block; }
+    .node-detail h3 { margin: 0 0 0.5rem; color: #7dcfff; font-size: 1rem; }
+    .node-detail .prop { margin-bottom: 0.5rem; }
+    .node-detail .key { color: #bb9af7; }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <label class="btn">Load graph.json <input type="file" id="file" accept=".json" /></label>
+    <span class="hint">Export first: <code>node scripts/export-graph.mjs</code> then load <code>graph-export.json</code></span>
+  </div>
+  <div id="mynetwork"></div>
+  <div id="detail" class="node-detail"></div>
+
+  <script>
+    (function () {
+      const container = document.getElementById('mynetwork');
+      const detailEl = document.getElementById('detail');
+      const fileInput = document.getElementById('file');
+
+      const LABEL_COLORS = {
+        Document: '#f7768e',
+        Package: '#ff9e64',
+        PartDef: '#e0af68',
+        PartUsage: '#9ece6a',
+        RequirementDef: '#73daca',
+        Block: '#7dcfff',
+        Action: '#bb9af7',
+        StateMachine: '#c0caf5',
+        ConnectionDef: '#7aa2f7',
+        ConnectionUsage: '#89b4fa',
+        PortDef: '#2ac3de',
+        Port: '#b4f9f8',
+        ValueType: '#a9b1d6'
+      };
+      function colorFor(label) { return LABEL_COLORS[label] || '#565f89'; }
+
+      let network = null;
+
+      function render(data) {
+        const nodes = data.nodes.map(function (n) {
+          const label = (n.name || n.id).slice(-40);
+          return {
+            id: n.id,
+            label: label,
+            title: n.id,
+            color: { background: colorFor(n.label), border: '#363b54' },
+            font: { color: '#1a1b26', size: 11 }
+          };
+        });
+        const edges = data.edges.map(function (e) {
+          return { from: e.from, to: e.to, title: e.type };
+        });
+        const nodesDataset = new vis.DataSet(nodes);
+        const edgesDataset = new vis.DataSet(edges);
+        const graph = { nodes: nodesDataset, edges: edgesDataset };
+        const options = {
+          nodes: { shape: 'dot', size: 12 },
+          edges: { arrows: 'to', width: 0.8 },
+          physics: { enabled: true, forceAtlas2Based: { gravitationalConstant: -30, centralGravity: 0.01, springLength: 120 } }
+        };
+        if (network) network.destroy();
+        network = new vis.Network(container, graph, options);
+
+        const nodeMap = new Map(data.nodes.map(function (n) { return [n.id, n]; }));
+
+        network.on('click', function (params) {
+          if (params.nodes.length) {
+            const n = nodeMap.get(params.nodes[0]);
+            if (n) {
+              detailEl.innerHTML = '<h3>' + (n.name || n.id) + '</h3>' +
+                '<div class="prop"><span class="key">id</span>: ' + escapeHtml(n.id) + '</div>' +
+                '<div class="prop"><span class="key">label</span>: ' + escapeHtml(n.label) + '</div>' +
+                '<div class="prop"><span class="key">path</span>: ' + escapeHtml(n.path) + '</div>';
+              detailEl.classList.add('visible');
+            }
+          } else {
+            detailEl.classList.remove('visible');
+          }
+        });
+      }
+
+      function escapeHtml(s) {
+        const div = document.createElement('div');
+        div.textContent = s;
+        return div.innerHTML;
+      }
+
+      fileInput.addEventListener('change', function () {
+        const f = fileInput.files[0];
+        if (!f) return;
+        const r = new FileReader();
+        r.onload = function () {
+          try {
+            const data = JSON.parse(r.result);
+            if (data.nodes && Array.isArray(data.nodes)) {
+              render(data);
+            } else {
+            }
+          } catch (e) {
+            alert('Invalid JSON: ' + e.message);
+          }
+        };
+        r.readAsText(f);
+      });
+    })();
+  </script>
+</body>
+</html>

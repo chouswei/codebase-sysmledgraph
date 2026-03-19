@@ -1,0 +1,47 @@
+{
+  "name": "sysmledgraph",
+  "version": "0.4.2",
+  "description": "Path-only SysML indexer: knowledge graph (Kuzu), MCP server (query, context, impact, rename, cypher), CLI (analyze, list, clean)",
+  "type": "module",
+  "main": "dist/src/index.js",
+  "bin": {
+    "sysmledgraph": "dist/bin/cli.js",
+    "sysmledgraph-mcp": "dist/mcp/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "node scripts/clean.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "analyze": "node dist/bin/cli.js analyze",
+    "export-graph": "node scripts/export-graph.mjs",
+    "generate-map": "node scripts/generate-map.mjs",
+    "deploy-skills": "node scripts/deploy-skills.mjs",
+    "mcp": "node dist/mcp/index.js",
+    "check:sysml-lsp": "node scripts/check-sysml-v2-lsp-version.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "commander": "^12.0.0",
+    "fast-glob": "^3.3.2",
+    "kuzu": "^0.11.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "sysml-v2-lsp": "^0.7.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.2.0"
+  },
+  "keywords": [
+    "sysml",
+    "knowledge-graph",
+    "mcp",
+    "kuzu",
+    "indexer"
+  ],
+  "license": "MIT"
+}

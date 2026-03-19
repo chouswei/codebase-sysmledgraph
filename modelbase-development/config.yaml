@@ -1,0 +1,17 @@
+# Modelbase Development – workflow and iteration across software, hardware, mechanism, system deployment.
+# Kernel + ScalarValues only.
+default_diagram_type: bdd
+auto_generate: [bdd, ibd]
+deployment_part: ModelbaseDevelopmentDeployment
+show_inventree_stock: false
+show_clickup_status: false
+color_by_status: false
+
+model_dir: models
+model_files:
+  - ../../../libs/omg/SysML-v2-Release/sysml.library/Kernel Libraries/Kernel Semantic Library/Base.kerml
+  - ../../../libs/omg/SysML-v2-Release/sysml.library/Kernel Libraries/Kernel Data Type Library/ScalarValues.kerml
+  - requirements-modelbase-development.sysml
+  - deploy-modelbase-development.sysml
+  - behaviour-modelbase-development.sysml
+  - project-modelbase-development.sysml

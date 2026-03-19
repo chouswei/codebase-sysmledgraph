@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "sysml-v2": {
+      "command": "node",
+      "args": ["node_modules/sysml-v2-lsp/dist/server/mcpServer.js"]
+    },
+    "gitnexus": {
+      "command": "npx",
+      "args": ["-y", "gitnexus@latest", "mcp"]
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@latest"]
+    }
+  }
+}
