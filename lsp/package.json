@@ -1,0 +1,15 @@
+{
+  "name": "sysmledgraph-lsp-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dedicated LSP server setup for SysML (sysml-v2-lsp). Run from here so the server has its own cwd and init.",
+  "type": "module",
+  "scripts": {
+    "start": "node node_modules/sysml-v2-lsp/dist/server/server.js",
+    "mcp": "node node_modules/sysml-v2-lsp/dist/server/mcpServer.js",
+    "postinstall": "node -e \"console.log('LSP server deps ready. Run: npm start (stdio) or use path in SYSMLLSP_SERVER_PATH')\""
+  },
+  "dependencies": {
+    "sysml-v2-lsp": "^0.7.0"
+  }
+}

@@ -7,8 +7,7 @@
 
 import { spawn, type ChildProcess } from 'child_process';
 import { createRequire } from 'module';
-import { dirname, resolve } from 'path';
-import { fileURLToPath } from 'url';
+import { resolve } from 'path';
 
 const require = createRequire(import.meta.url);
 
@@ -89,6 +88,8 @@ export interface SysmlMcpClientOptions {
   serverPath?: string;
   /** Timeout in ms for initialize. Default 20000. */
   initTimeout?: number;
+  /** Log raw stdout/stderr for debugging. */
+  debug?: boolean;
 }
 
 export interface ParseResult {
@@ -142,14 +143,26 @@ export async function createSysmlMcpClient(options: SysmlMcpClientOptions = {}):
 }> {
   const serverPath = options.serverPath ?? getMcpServerPath();
   const initTimeout = options.initTimeout ?? 20000;
+  const debug = options.debug ?? false;
 
-  const pkgRoot = resolve(dirname(serverPath), '../..');
-  const proc = spawn(process.execPath, [serverPath], {
-    stdio: ['pipe', 'pipe', 'pipe'],
-    cwd: pkgRoot,
-  });
+  // Match Cursor: run from project root; on Windows use cmd /c node <path> so Node runs the script (avoids "open with" for .js).
+  const isWin = process.platform === 'win32';
+  const proc = isWin
+    ? spawn('cmd', ['/c', process.execPath, serverPath], { stdio: ['pipe', 'pipe', 'pipe'], cwd: process.cwd() })
+    : spawn(process.execPath, [serverPath], { stdio: ['pipe', 'pipe', 'pipe'], cwd: process.cwd() });
 
-  proc.stderr?.on('data', () => {});
+  if (debug) {
+    proc.stdout?.on('data', (chunk: Buffer | string) => {
+      const s = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+      console.error('[mcp stdout]', s.length, 'bytes:', s.slice(0, 300));
+    });
+    proc.stderr?.on('data', (chunk: Buffer | string) => {
+      console.error('[mcp stderr]', (typeof chunk === 'string' ? chunk : chunk.toString('utf8')).slice(0, 500));
+    });
+    proc.on('exit', (code, signal) => console.error('[mcp exit]', code, signal));
+    proc.on('error', (err) => console.error('[mcp error]', err.message));
+  }
+  if (!debug) proc.stderr?.on('data', () => {});
 
   const { readNext, drain } = createMcpReader(proc);
 

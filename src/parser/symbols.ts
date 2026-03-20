@@ -5,9 +5,13 @@
 
 import { readFile } from 'fs/promises';
 import type { NormalizedSymbol, NodeLabel, SymbolProps, SymbolRelation } from '../types.js';
-import { symbolKindToNodeLabel } from '../symbol-to-graph/mapping.js';
+import { symbolKindToNodeLabel, lspSymbolKindToNodeLabel } from '../symbol-to-graph/mapping.js';
 import type { DocumentSymbolLsp } from './lsp-client.js';
-import { getDocumentSymbolsFromLsp } from './lsp-client.js';
+import {
+  getDocumentSymbolsFromLsp,
+  closeLspClient as closeLspClientImpl,
+  resolveLspServerPath,
+} from './lsp-client.js';
 
 function flattenSymbols(symbols: DocumentSymbolLsp[], parentQualifiedName: string | null): Array<{ sym: DocumentSymbolLsp; qualifiedName: string }> {
   const out: Array<{ sym: DocumentSymbolLsp; qualifiedName: string }> = [];
@@ -30,7 +34,9 @@ function documentSymbolToNormalized(
   documentPath: string,
   parentQualifiedName: string | null
 ): NormalizedSymbol | null {
-  const label = symbolKindToNodeLabel(item.sym.detail ?? '');
+  const label =
+    symbolKindToNodeLabel(item.sym.detail ?? '') ??
+    (typeof item.sym.kind === 'number' ? lspSymbolKindToNodeLabel(item.sym.kind) : undefined);
   if (!label) return null;
   const props: SymbolProps = {
     name: item.sym.name,
@@ -39,32 +45,104 @@ function documentSymbolToNormalized(
   };
   const relations: SymbolRelation[] = [];
   relations.push({ from: item.qualifiedName, to: documentPath, type: 'IN_DOCUMENT' });
-  if (parentQualifiedName) {
-    relations.push({ from: item.qualifiedName, to: parentQualifiedName, type: 'IN_PACKAGE' });
+  const parent = parentQualifiedName ?? item.sym.containerName;
+  if (parent) {
+    relations.push({ from: item.qualifiedName, to: parent, type: 'IN_PACKAGE' });
   }
   return { label, props, relations };
 }
 
-/**
- * Get symbols and relations for a single file via LSP documentSymbol (external server.js from SYSMLLSP_SERVER_PATH).
- * Returns [] when the LSP returns no symbols; throws if SYSMLLSP_SERVER_PATH is unset or the server fails.
- */
-export async function getSymbolsForFile(filePath: string, content?: string): Promise<NormalizedSymbol[]> {
-  const text = content ?? await readFile(filePath, 'utf-8').catch(() => '');
-  const lspSymbols = await getDocumentSymbolsFromLsp(filePath, text);
-  if (lspSymbols.length === 0) return [];
+let sharedMcpClient: Awaited<ReturnType<typeof createMcpClient>> | null = null;
 
-  const flat = flattenSymbols(lspSymbols, null);
-  const normalized: NormalizedSymbol[] = [];
-  for (const item of flat) {
-    const parentQ = item.qualifiedName.includes('::') ? item.qualifiedName.slice(0, item.qualifiedName.lastIndexOf('::')) : null;
-    const n = documentSymbolToNormalized(item, filePath, parentQ);
-    if (n) normalized.push(n);
+async function createMcpClient(): Promise<{
+  getSymbols: (content: string, uri: string, filePath: string) => Promise<NormalizedSymbol[]>;
+  close: () => void;
+} | null> {
+  const { createSysmlMcpClient, getMcpServerPath } = await import('./sysml-mcp-client.js');
+  const serverPath = getMcpServerPath();
+  if (!serverPath) return null;
+  const client = await createSysmlMcpClient({ serverPath, initTimeout: 60000 });
+  return {
+    async getSymbols(content: string, uri: string, filePath: string) {
+      const { symbols } = await client.getSymbols(content, uri);
+      const normalized: NormalizedSymbol[] = [];
+      for (const sym of symbols ?? []) {
+        const label = symbolKindToNodeLabel(sym.kind ?? '');
+        if (!label) continue;
+        const qualifiedName = sym.qualifiedName ?? sym.name;
+        const relations: SymbolRelation[] = [{ from: qualifiedName, to: filePath, type: 'IN_DOCUMENT' }];
+        if (sym.parent) relations.push({ from: qualifiedName, to: sym.parent, type: 'IN_PACKAGE' });
+        normalized.push({
+          label,
+          props: { name: sym.name, qualifiedName, path: filePath },
+          relations,
+        });
+      }
+      return normalized;
+    },
+    close: () => {
+      client.close();
+    },
+  };
+}
+
+/** Use shared MCP client for getSymbols (one init per index run). Returns [] if MCP unavailable or fails. */
+async function getSymbolsFromMcp(filePath: string, content: string): Promise<NormalizedSymbol[]> {
+  try {
+    if (!sharedMcpClient) sharedMcpClient = await createMcpClient();
+    if (!sharedMcpClient) return [];
+    const uri = `file:///${filePath.replace(/\\/g, '/')}`;
+    return await sharedMcpClient.getSymbols(content, uri, filePath);
+  } catch {
+    return [];
   }
-  return normalized;
 }
 
 /**
- * Call after indexing to close the shared LSP client and free the process.
+ * Get symbols and relations for a single file. Tries LSP documentSymbol first when SYSMLLSP_SERVER_PATH is set;
+ * if LSP returns no symbols (or is unset), uses MCP getSymbols (one shared client per index run).
  */
-export { closeLspClient } from './lsp-client.js';
+export async function getSymbolsForFile(filePath: string, content?: string): Promise<NormalizedSymbol[]> {
+  const text = content ?? await readFile(filePath, 'utf-8').catch(() => '');
+  const LSP_SYMBOL_TIMEOUT_MS = 20000;
+  if (resolveLspServerPath()) {
+    try {
+      const lspSymbols = await Promise.race([
+        getDocumentSymbolsFromLsp(filePath, text),
+        new Promise<DocumentSymbolLsp[]>((_, rej) =>
+          setTimeout(() => rej(new Error('LSP documentSymbol timeout')), LSP_SYMBOL_TIMEOUT_MS)
+        ),
+      ]);
+      if (lspSymbols.length > 0) {
+        const flat = flattenSymbols(lspSymbols, null);
+        const normalized: NormalizedSymbol[] = [];
+        for (const item of flat) {
+          const qualifiedName = item.sym.containerName
+            ? `${item.sym.containerName}::${item.sym.name}`
+            : item.qualifiedName;
+          const parentQ = qualifiedName.includes('::') ? qualifiedName.slice(0, qualifiedName.lastIndexOf('::')) : null;
+          const n = documentSymbolToNormalized({ sym: item.sym, qualifiedName }, filePath, parentQ);
+          if (n) normalized.push(n);
+        }
+        return normalized;
+      }
+    } catch {
+      // LSP failed or unavailable; fall through to MCP
+    }
+  }
+  return getSymbolsFromMcp(filePath, text);
+}
+
+/** Close shared MCP client (used when LSP returned no symbols). */
+function closeMcpClient(): void {
+  if (sharedMcpClient) {
+    sharedMcpClient.close();
+    sharedMcpClient = null;
+  }
+}
+
+/** Call after indexing to close the shared LSP and MCP clients. */
+export function closeLspClient(): void {
+  closeMcpClient();
+  closeLspClientImpl();
+}

@@ -96,8 +96,12 @@ for (const relType of EDGE_TYPES) {
     // rel table may not exist
   }
 }
-if (edgeCount === 0) lines.push('| (none) | | |');
-lines.push('');
+if (edgeCount === 0) {
+  lines.push('| (none) | | |');
+  lines.push('');
+  lines.push('_No edges: graph has only Document nodes. Edges appear when the indexer gets LSP symbols (e.g. Package, PartDef) and writes IN_DOCUMENT / IN_PACKAGE relations._');
+  lines.push('');
+}
 
 conn.close();
 db.close();

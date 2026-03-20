@@ -15,6 +15,8 @@ export function symbolKindToNodeLabel(kind: string): NodeLabel | undefined {
     Package: 'Package',
     package: 'Package',
     PartDefinition: 'PartDef',
+    'Part Definition': 'PartDef',
+    'part definition': 'PartDef',
     'part def': 'PartDef',
     PartUsage: 'PartUsage',
     'part usage': 'PartUsage',
@@ -27,6 +29,8 @@ export function symbolKindToNodeLabel(kind: string): NodeLabel | undefined {
     PortUsage: 'Port',
     'port usage': 'Port',
     RequirementDefinition: 'RequirementDef',
+    'Requirement Definition': 'RequirementDef',
+    'requirement definition': 'RequirementDef',
     'requirement def': 'RequirementDef',
     RequirementUsage: 'RequirementDef',
     'requirement usage': 'RequirementDef',
@@ -59,7 +63,26 @@ export function symbolKindToNodeLabel(kind: string): NodeLabel | undefined {
     OccurrenceUsage: 'PartUsage',
     'occurrence usage': 'PartUsage',
   };
-  return map[kind];
+  const exact = map[kind];
+  if (exact) return exact;
+  const normalized = kind?.trim().toLowerCase().replace(/\s+/g, ' ');
+  return map[normalized] ?? map[kind?.trim() ?? ''];
+}
+
+/** LSP SymbolKind enum (number). Used when DocumentSymbol.detail is missing. */
+const LSP_KIND_TO_LABEL: Partial<Record<number, NodeLabel>> = {
+  2: 'Package',   // Namespace
+  4: 'Package',   // Package
+  5: 'PartDef',   // Class
+  6: 'Action',    // Method
+  7: 'ValueType', // Property
+  8: 'ValueType', // Field
+  10: 'Block',    // Enum
+  11: 'Block',    // Interface
+};
+
+export function lspSymbolKindToNodeLabel(kind: number): NodeLabel | undefined {
+  return LSP_KIND_TO_LABEL[kind];
 }
 
 /**

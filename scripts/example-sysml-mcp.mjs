@@ -12,7 +12,7 @@ const code = `package Example {
   }
 }`;
 
-const client = await createSysmlMcpClient({ initTimeout: 45000 });
+const client = await createSysmlMcpClient();
 try {
   const parseResult = await client.parse(code, 'file:///example.sysml');
   console.log('parse:', JSON.stringify(parseResult, null, 2));

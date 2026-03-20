@@ -19,6 +19,7 @@
     "analyze": "node dist/bin/cli.js analyze",
     "export-graph": "node scripts/export-graph.mjs",
     "generate-map": "node scripts/generate-map.mjs",
+    "index-and-map": "node scripts/index-and-map.mjs",
     "deploy-skills": "node scripts/deploy-skills.mjs",
     "mcp": "node dist/mcp/index.js",
     "check:sysml-lsp": "node scripts/check-sysml-v2-lsp-version.mjs"
@@ -27,7 +28,7 @@
     "@modelcontextprotocol/sdk": "^1.0.0",
     "commander": "^12.0.0",
     "fast-glob": "^3.3.2",
-    "kuzu": "^0.11.0",
+    "kuzu": "^0.11.3",
     "zod": "^3.25.76"
   },
   "devDependencies": {
