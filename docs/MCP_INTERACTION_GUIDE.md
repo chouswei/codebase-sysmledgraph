@@ -170,7 +170,14 @@ Edges come from **symbols** (Package, PartDef, etc.). The indexer gets symbols v
 
 ---
 
-## 7. Summary
+## 7. Debugging
+
+- **`DEBUG_SYSMLEGRAPH_SYMBOLS=1`** — Log to stderr per file whether symbols came from **LSP** or **MCP** (and count for MCP). Use when indexing to see which path is used.
+- **`DEBUG_LSP_NOTIFICATIONS=1`** — Log LSP `window/logMessage` and `window/showMessage` to stderr when using the LSP client.
+
+---
+
+## 8. Summary
 
 | Goal                         | Approach                                                                 |
 |-----------------------------|---------------------------------------------------------------------------|

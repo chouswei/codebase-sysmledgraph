@@ -86,17 +86,30 @@ async function createMcpClient(): Promise<{
   };
 }
 
-/** Use shared MCP client for getSymbols (one init per index run). Returns [] if MCP unavailable or fails. */
+const MCP_RETRY_DELAY_MS = 1000;
+
+/** Use shared MCP client for getSymbols (one init per index run). Returns [] if MCP unavailable or fails. Retries once on failure. */
 async function getSymbolsFromMcp(filePath: string, content: string): Promise<NormalizedSymbol[]> {
-  try {
+  const attempt = async (): Promise<NormalizedSymbol[]> => {
     if (!sharedMcpClient) sharedMcpClient = await createMcpClient();
     if (!sharedMcpClient) return [];
     const uri = `file:///${filePath.replace(/\\/g, '/')}`;
     return await sharedMcpClient.getSymbols(content, uri, filePath);
+  };
+  try {
+    return await attempt();
   } catch {
-    return [];
+    await new Promise((r) => setTimeout(r, MCP_RETRY_DELAY_MS));
+    try {
+      return await attempt();
+    } catch {
+      return [];
+    }
   }
 }
+
+/** When set, log to stderr whether symbols came from LSP or MCP (per file). */
+const DEBUG_SYMBOL_SOURCE = process.env.DEBUG_SYSMLEGRAPH_SYMBOLS === '1';
 
 /**
  * Get symbols and relations for a single file. Tries LSP documentSymbol first when SYSMLLSP_SERVER_PATH is set;
@@ -114,6 +127,7 @@ export async function getSymbolsForFile(filePath: string, content?: string): Pro
         ),
       ]);
       if (lspSymbols.length > 0) {
+        if (DEBUG_SYMBOL_SOURCE) process.stderr.write(`[sysmledgraph] symbols from LSP: ${filePath}\n`);
         const flat = flattenSymbols(lspSymbols, null);
         const normalized: NormalizedSymbol[] = [];
         for (const item of flat) {
@@ -130,7 +144,9 @@ export async function getSymbolsForFile(filePath: string, content?: string): Pro
       // LSP failed or unavailable; fall through to MCP
     }
   }
-  return getSymbolsFromMcp(filePath, text);
+  const mcpSymbols = await getSymbolsFromMcp(filePath, text);
+  if (DEBUG_SYMBOL_SOURCE) process.stderr.write(`[sysmledgraph] symbols from MCP: ${filePath} (${mcpSymbols.length})\n`);
+  return mcpSymbols;
 }
 
 /** Close shared MCP client (used when LSP returned no symbols). */

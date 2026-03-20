@@ -260,10 +260,17 @@ export async function createLspClient(): Promise<{
 
 let sharedClient: Awaited<ReturnType<typeof createLspClient>> | null = null;
 
-/** Spawns external LSP (SYSMLLSP_SERVER_PATH). Throws if unset or startup fails. */
+const LSP_INIT_RETRY_DELAY_MS = 1500;
+
+/** Spawns external LSP (SYSMLLSP_SERVER_PATH). Throws if unset or startup fails. Retries once on transient failure. */
 export async function getDocumentSymbolsFromLsp(filePath: string, content: string): Promise<DocumentSymbolLsp[]> {
   if (!sharedClient) {
-    sharedClient = await createLspClient();
+    try {
+      sharedClient = await createLspClient();
+    } catch (firstErr) {
+      await new Promise((r) => setTimeout(r, LSP_INIT_RETRY_DELAY_MS));
+      sharedClient = await createLspClient();
+    }
   }
   const uri = pathToFileURL(filePath).href;
   return await sharedClient.getDocumentSymbols(uri, content);
