@@ -155,7 +155,7 @@ When the MCP server is started from a Node script, it may not send the initializ
 Indexing and generating the graph map use the **LSP** server (`server.js`), not the MCP server. The CLI runs `analyze` (which spawns the LSP and uses documentSymbol), then you can run `generate-map` to produce a markdown map.
 
 - **Kuzu:** The graph DB is backed by [kuzu](https://www.npmjs.com/package/kuzu). Ensure it is built: run `npm install` without `--ignore-scripts`, or `node node_modules/kuzu/install.js` so that `index.js` / `index.mjs` and the native addon are present. Without this, analyze and generate-map will fail with module-not-found.
-- **LSP path:** Set **`SYSMLLSP_SERVER_PATH`** to the absolute (or cwd-relative) path to `sysml-v2-lsp/dist/server/server.js`. If unset, **`scripts/index-and-map.mjs`** prefers **`lsp/node_modules/sysml-v2-lsp/dist/server/server.js`** (dedicated LSP init folder), then repo root `node_modules/...`. So you can run `cd lsp && npm install` (use `--ignore-scripts` on Windows if the package postinstall fails), then from repo root run index-and-map without setting the env var; the spawn cwd will be `lsp/`.
+- **LSP path:** The canonical LSP for this repo is in **`lsp/`**. Run **`npm run setup-lsp`** (or `cd lsp && npm install`) once; the indexer then uses `lsp/node_modules/sysml-v2-lsp/dist/server/server.js` by default (then root `node_modules/...` as fallback). No need to set **`SYSMLLSP_SERVER_PATH`** when using the default. See docs/PLAN_INDEPENDENT_LSP.md.
 - **Commands (from repo root, after `npm run build`):**
   - `npm run index-and-map` — Index default path `test/fixtures/sysml`, then write **graph-map.md**.
   - `npm run index-and-map <path>` — Index the given path, then generate the map.

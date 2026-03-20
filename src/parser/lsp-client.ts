@@ -16,6 +16,7 @@
 import { spawn } from 'child_process';
 import { pathToFileURL } from 'url';
 import { dirname, resolve } from 'path';
+import { getDefaultLspServerPath } from './lsp-server-path.js';
 
 export interface DocumentSymbolLsp {
   name: string;
@@ -28,12 +29,9 @@ export interface DocumentSymbolLsp {
   containerName?: string;
 }
 
-/** Absolute path to LSP server script, or null if SYSMLLSP_SERVER_PATH is unset/invalid. */
+/** Absolute path to LSP server script, or null if none found. Uses getDefaultLspServerPath (env → lsp/ → root). */
 export function resolveLspServerPath(): string | null {
-  const p = process.env.SYSMLLSP_SERVER_PATH?.trim();
-  if (!p) return null;
-  const isAbsolute = p.startsWith('/') || /^[A-Za-z]:[/\\]/.test(p);
-  return isAbsolute ? p : resolve(process.cwd(), p);
+  return getDefaultLspServerPath();
 }
 
 function sendLspMessage(proc: ReturnType<typeof spawn>, body: string): void {

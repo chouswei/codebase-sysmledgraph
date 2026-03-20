@@ -1,6 +1,6 @@
 {
   "name": "sysmledgraph",
-  "version": "0.4.4",
+  "version": "0.7.0",
   "description": "Path-only SysML indexer: knowledge graph (Kuzu), MCP server (query, context, impact, rename, cypher), CLI (analyze, list, clean)",
   "type": "module",
   "main": "dist/src/index.js",
@@ -10,19 +10,6 @@
   },
   "engines": {
     "node": ">=20"
-  },
-  "scripts": {
-    "build": "tsc",
-    "clean": "node scripts/clean.mjs",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "analyze": "node dist/bin/cli.js analyze",
-    "export-graph": "node scripts/export-graph.mjs",
-    "generate-map": "node scripts/generate-map.mjs",
-    "index-and-map": "node scripts/index-and-map.mjs",
-    "deploy-skills": "node scripts/deploy-skills.mjs",
-    "mcp": "node dist/mcp/index.js",
-    "check:sysml-lsp": "node scripts/check-sysml-v2-lsp-version.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
@@ -44,5 +31,31 @@
     "kuzu",
     "indexer"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chouswei/codebase-sysmledgraph"
+  },
+  "files": [
+    "dist",
+    "scripts",
+    "lsp",
+    "README.md",
+    "docs"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "node scripts/clean.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "analyze": "node dist/bin/cli.js analyze",
+    "export-graph": "node scripts/export-graph.mjs",
+    "generate-map": "node scripts/generate-map.mjs",
+    "index-and-map": "node scripts/index-and-map.mjs",
+    "deploy-skills": "node scripts/deploy-skills.mjs",
+    "mcp": "node dist/mcp/index.js",
+    "check:sysml-lsp": "node scripts/check-sysml-v2-lsp-version.mjs",
+    "setup-lsp": "node scripts/setup-lsp.mjs",
+    "prepublishOnly": "npm run build"
+  }
 }

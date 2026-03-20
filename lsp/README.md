@@ -1,6 +1,6 @@
 # LSP server (dedicated init)
 
-This folder is a **separate npm install** for the SysML LSP server. Use it so the server runs with its own `cwd` and dependencies.
+This folder is a **separate npm install** for the SysML LSP server. This is the **only** LSP used by sysmledgraph when present; root `node_modules` is fallback. Use it so the server runs with its own `cwd` and dependencies.
 
 ## Setup
 

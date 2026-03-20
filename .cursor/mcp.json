@@ -1,5 +1,11 @@
 {
   "mcpServers": {
+    "sysmledgraph": {
+      "command": "node",
+      "args": ["dist/mcp/index.js"],
+      "cwd": ".",
+      "env": {}
+    },
     "sysml-v2": {
       "command": "node",
       "args": ["node_modules/sysml-v2-lsp/dist/server/mcpServer.js"]

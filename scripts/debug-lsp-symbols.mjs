@@ -16,8 +16,10 @@ if (!existsSync(absPath)) {
 }
 
 if (!process.env.SYSMLLSP_SERVER_PATH) {
-  const def = resolve(process.cwd(), 'node_modules/sysml-v2-lsp/dist/server/server.js');
-  if (existsSync(def)) process.env.SYSMLLSP_SERVER_PATH = def;
+  const lspPath = resolve(process.cwd(), 'lsp/node_modules/sysml-v2-lsp/dist/server/server.js');
+  const rootPath = resolve(process.cwd(), 'node_modules/sysml-v2-lsp/dist/server/server.js');
+  if (existsSync(lspPath)) process.env.SYSMLLSP_SERVER_PATH = lspPath;
+  else if (existsSync(rootPath)) process.env.SYSMLLSP_SERVER_PATH = rootPath;
 }
 
 async function main() {
