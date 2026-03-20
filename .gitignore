@@ -2,6 +2,7 @@ node_modules/
 dist/
 *.log
 .env
+.npmrc
 .sysmledgraph/
 .sysmledgraph-*/
 .sysmledgraph-index-result.txt

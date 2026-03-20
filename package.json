@@ -34,7 +34,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/chouswei/codebase-sysmledgraph"
+    "url": "git+https://github.com/chouswei/codebase-sysmledgraph.git"
   },
   "files": [
     "dist",

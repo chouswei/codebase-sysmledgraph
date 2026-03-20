@@ -2,6 +2,9 @@
 
 Path-only SysML indexer: builds a knowledge graph from `.sysml` files and exposes it via **MCP** (for Cursor AI) and **CLI**. The LSP used for indexing lives in **`lsp/`** and is used only by this repo.
 
+- **npm:** [sysmledgraph](https://www.npmjs.com/package/sysmledgraph) — `npm install sysmledgraph`
+- **Repo:** [github.com/chouswei/codebase-sysmledgraph](https://github.com/chouswei/codebase-sysmledgraph)
+
 ## Requirements
 
 - **Node.js 20+**
@@ -10,7 +13,15 @@ Path-only SysML indexer: builds a knowledge graph from `.sysml` files and expose
 
 ## Install
 
+**From npm (use as CLI/MCP):**
 ```bash
+npm install sysmledgraph
+cd node_modules/sysmledgraph && npm run setup-lsp
+```
+
+**From source (develop or run from repo):**
+```bash
+git clone https://github.com/chouswei/codebase-sysmledgraph.git && cd codebase-sysmledgraph
 npm install
 npm run build
 npm run setup-lsp
