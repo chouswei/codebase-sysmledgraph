@@ -35,6 +35,7 @@ program
     }
     const n = result.filesProcessed ?? 0;
     process.stderr.write(`Indexed ${n} file(s).\n`);
+    process.exit(0);
   });
 
 program

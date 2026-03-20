@@ -31,15 +31,19 @@ export async function cmdAnalyze(paths: string[]): Promise<{ ok: boolean; filesP
   }
   const dbPath = getDbPathForIndexedPath(resolved[0]);
   const store = await openGraphStore(dbPath);
-  let totalProcessed = 0;
-  for (const p of resolved) {
-    if (store.deleteNodesForRoot) await store.deleteNodesForRoot(p);
-    const result = await runIndexer(store, { roots: [p] });
-    if (!result.ok) return { ok: false, filesProcessed: totalProcessed, error: result.error };
-    totalProcessed += result.filesProcessed;
-    await addToRegistry(p, new Date().toISOString());
+  try {
+    let totalProcessed = 0;
+    for (const p of resolved) {
+      if (store.deleteNodesForRoot) await store.deleteNodesForRoot(p);
+      const result = await runIndexer(store, { roots: [p] });
+      if (!result.ok) return { ok: false, filesProcessed: totalProcessed, error: result.error };
+      totalProcessed += result.filesProcessed;
+      await addToRegistry(p, new Date().toISOString());
+    }
+    return { ok: true, filesProcessed: totalProcessed };
+  } finally {
+    if (store.close) await store.close();
   }
-  return { ok: true, filesProcessed: totalProcessed };
 }
 
 export async function cmdList(): Promise<{ ok: boolean; paths: string[]; error?: string }> {

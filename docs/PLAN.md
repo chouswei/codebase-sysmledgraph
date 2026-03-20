@@ -1,5 +1,7 @@
 # Plan: LSP Client Fixes & Indexing
 
+**Released:** v0.4.3 (2026-03-19) — see `release-notes-v0.4.3.md`.
+
 ## Current Status
 
 ✅ **Completed:**
@@ -11,45 +13,22 @@
 - Added LSP SymbolKind fallback: map numeric `kind` to label when `detail` is missing
 - Enhanced symbol mapping: added MCP-style kind strings ("Part Definition", etc.) with normalized lookup
 - Analyzed MCP client template patterns
-- **✅ Phase 1 Complete:** LSP client now returns symbols correctly; graph has symbol nodes (Package, PartDef) and edges (IN_DOCUMENT, IN_PACKAGE)
-
-⚠️ **Minor Issue:**
-- CLI may exit non-zero after successful indexing (cleanup/close issue), but data is written correctly
+- **✅ Phase 1 Complete:** LSP client returns symbols; graph has symbol nodes and edges (IN_DOCUMENT, IN_PACKAGE)
+- **✅ Phase 2 Complete:** LSP notification handler (e.g. `window/logMessage` when `DEBUG_LSP_NOTIFICATIONS=1`); indexed `modelbase-development/models/`; `graph-map.md` generated with full nodes and interconnection table
+- **✅ CLI exit fix:** (1) Explicit graph store close in `cmdAnalyze` (try/finally). (2) After successful analyze, CLI calls `process.exit(0)` so the process exits before Node/Kuzu teardown (avoids Windows access violation). Verified: `node scripts/index-and-map.mjs test/fixtures/sysml` completes with exit 0 and writes `graph-map.md`.
 
 ## Plan
 
-### Phase 1: Test & Verify (Immediate)
+### Phase 1: Test & Verify — ✅ Done
 
-1. **Rebuild and test LSP client**
-   ```bash
-   npm run build
-   node lsp/test-server.mjs  # Should work (already tested)
-   ```
+1. Rebuild and test LSP client; run index-and-map.
+2. Verify `graph-map.md` has symbol nodes and edges.
+3. Debug LSP/MCP via `scripts/debug-lsp-symbols.mjs` if needed.
 
-2. **Test index-and-map with fixed client**
-   ```bash
-   npm run index-and-map
-   ```
-   - Check if LSP now returns symbols (with `--stdio`, proper cwd, timeouts)
-   - If LSP still returns empty, MCP fallback should kick in
-   - Verify `graph-map.md` has symbol nodes and edges
+### Phase 2: Notification Handlers & Larger Models — ✅ Done
 
-3. **If still no edges:**
-   - Run `node scripts/debug-lsp-symbols.mjs` to see raw LSP response
-   - Check if MCP fallback is being called (add logging)
-   - Verify MCP client init succeeds (may need longer timeout or different approach)
-
-### Phase 2: Notification Handlers (From Template Analysis)
-
-4. **Add LSP notification handlers**
-   - If server sends `window/logMessage`, register handler instead of ignoring
-   - Log notifications for debugging
-   - Pattern from template: `client.setNotificationHandler(schema, handler)`
-
-5. **Test with real SysML files**
-   - Index `modelbase-development/models/` (larger, more symbols)
-   - Validate specific file: `deploy-modelbase-development.sysml`
-   - Check if edges appear with more complex models
+4. **LSP notification handler** — Handler added in `lsp-client.ts`; `window/logMessage` and `window/showMessage` logged when `DEBUG_LSP_NOTIFICATIONS=1`.
+5. **Real SysML files** — Indexed `modelbase-development/models/` (4 files); map shows Action, Block, Package, PartDef, PartUsage, RequirementDef and IN_DOCUMENT/IN_PACKAGE edges.
 
 ### Phase 3: Robustness (If Needed)
 
@@ -63,25 +42,20 @@
 
 ### Phase 4: Validation & Documentation
 
-8. **Validate the requested file**
+8. **Validate the requested file** (optional)
    - Use MCP `validate` tool on `deploy-modelbase-development.sysml`
    - Report syntax errors, semantic issues
 
-9. **Update documentation**
-   - Document the fixes in `MCP_INTERACTION_GUIDE.md`
-   - Add troubleshooting section for "no edges" issue
-   - Document `lsp/` folder usage
+9. **Documentation** — Done in v0.4.3: fixes in `MCP_INTERACTION_GUIDE.md`, "no edges" and troubleshooting, `lsp/` usage in README and release notes. Further troubleshooting can be added as needed.
 
-## Immediate Next Steps
+## Next Steps (Phase 3 / 4)
 
-1. **Rebuild TypeScript**
-2. **Run index-and-map** to see if fixes work
-3. **Check graph-map.md** for symbol nodes and edges
-4. **If still empty:** Debug LSP response and MCP fallback
+1. **Optional:** Connection retry and clearer error reporting (Phase 3).
+2. **Optional:** MCP `validate` on a SysML file; expand troubleshooting in docs (Phase 4).
 
 ## Success Criteria
 
-- ✅ `graph-map.md` shows symbol nodes (Package, PartDef, etc.) not just Document
+- ✅ `graph-map.md` shows symbol nodes (Package, PartDef, Action, etc.) not just Document
 - ✅ Interconnection table has edges (IN_DOCUMENT, IN_PACKAGE)
-- ✅ Indexing completes without timeouts
-- ✅ Validation script works for SysML files
+- ✅ Indexing writes data correctly (LSP + optional MCP fallback)
+- ⏳ Validation script for SysML files (script exists; MCP validate integration optional)
