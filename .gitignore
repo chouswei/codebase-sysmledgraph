@@ -12,3 +12,5 @@ analyze-out.txt
 *.tsbuildinfo
 coverage/
 .cache/
+compare-*-symbols.json
+debug-lsp-out.txt

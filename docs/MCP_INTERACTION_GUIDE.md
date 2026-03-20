@@ -177,7 +177,18 @@ Edges come from **symbols** (Package, PartDef, etc.). The indexer gets symbols v
 
 ---
 
-## 8. Summary
+## 8. Troubleshooting
+
+| Issue | What to do |
+|-------|------------|
+| **No edges in graph-map.md** | Edges come from LSP (or MCP fallback) symbols. Ensure **SYSMLLSP_SERVER_PATH** points to a built `server.js` (with `--stdio`). Run `node scripts/debug-lsp-symbols.mjs <file.sysml>` to see raw LSP output. Use **DEBUG_SYSMLEGRAPH_SYMBOLS=1** when indexing to see if LSP or MCP is used. |
+| **LSP server not found** | Run `npm install` (or in `lsp/` for a dedicated install). On Windows, if install fails use `npm install --ignore-scripts` then build; set **SYSMLLSP_SERVER_PATH** to your built `dist/server/server.js`. |
+| **Kuzu "Could not set lock on file"** | Only one process can open the same DB. Close Cursor (or disable the sysmledgraph MCP) before running CLI analyze/export, or use a different **SYSMEDGRAPH_STORAGE_ROOT** (e.g. a temp folder) for the run. |
+| **Validate a SysML file** | `node scripts/validate-sysml-file.mjs <path-to.sysml>`. Exit 0 = no issues; exit 1 = syntax/semantic issues or script error. Requires sysml-v2-lsp MCP server (same as indexing). |
+
+---
+
+## 9. Summary
 
 | Goal                         | Approach                                                                 |
 |-----------------------------|---------------------------------------------------------------------------|
@@ -187,3 +198,4 @@ Edges come from **symbols** (Package, PartDef, etc.). The indexer gets symbols v
 | Use from Cursor             | Enable sysml-v2 in `.cursor/mcp.json` and call MCP tools                 |
 | Use from Node/scripts       | `createSysmlMcpClient()` and call methods; run from project root         |
 | Index and see the map       | LSP (`server.js`); kuzu built; `npm run index-and-map` (see §6)          |
+| Validate a file             | `node scripts/validate-sysml-file.mjs <path>` (exit 0/1)                 |
