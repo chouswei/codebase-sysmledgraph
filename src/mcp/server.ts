@@ -1,26 +1,28 @@
 /**
  * MCP server: sysmledgraph. Stdio transport; tools and resources.
- * Phase 3 steps 11–13.
+ * Graph operations go through worker/gateway (long-lived TCP, stdio worker, or in-process).
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { handleIndexDbGraph } from './tools/index-db-graph.js';
-import { handleListIndexed } from './tools/list-indexed.js';
-import { handleCleanIndex } from './tools/clean-index.js';
-import { handleCypher } from './tools/cypher.js';
-import { handleQuery } from './tools/query.js';
-import { handleContext } from './tools/context.js';
-import { handleImpact } from './tools/impact.js';
-import { handleRename } from './tools/rename.js';
-import { handleGenerateMap } from './tools/generate-map.js';
-import { getContextContent } from './resources/context.js';
+import {
+  index,
+  listIndexed,
+  clean,
+  cypher,
+  query,
+  context,
+  impact,
+  rename,
+  generateMap,
+  getContextContent,
+} from '../worker/gateway.js';
 import { getSchemaContent } from './resources/schema.js';
 import { listIndexedPaths } from '../storage/list.js';
 
 const SERVER_NAME = 'sysmledgraph';
-const SERVER_VERSION = '0.1.0';
+const SERVER_VERSION = '0.8.0';
 
 function toolResult(content: string, isError = false): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
   const out: { content: Array<{ type: 'text'; text: string }>; isError?: boolean } = {
@@ -47,7 +49,7 @@ export async function createMcpServer(): Promise<McpServer> {
       paths: z.array(z.string()).optional().describe('Multiple paths to index'),
     }),
   }, async (args) => {
-    const result = await handleIndexDbGraph(args as { path?: string; paths?: string[] });
+    const result = await index(args as { path?: string; paths?: string[] });
     const text = result.ok
       ? JSON.stringify({ ok: true, filesProcessed: result.filesProcessed }, null, 2)
       : JSON.stringify({ ok: false, error: result.error }, null, 2);
@@ -58,7 +60,7 @@ export async function createMcpServer(): Promise<McpServer> {
     description: 'List indexed path(s).',
     inputSchema: z.object({}),
   }, async () => {
-    const result = await handleListIndexed();
+    const result = await listIndexed();
     const text = result.ok
       ? JSON.stringify({ ok: true, paths: result.paths }, null, 2)
       : JSON.stringify({ ok: false, error: result.error }, null, 2);
@@ -71,7 +73,7 @@ export async function createMcpServer(): Promise<McpServer> {
       path: z.string().optional().describe('Path to clean, or omit to clean all'),
     }),
   }, async (args) => {
-    const result = await handleCleanIndex(args as { path?: string });
+    const result = await clean(args as { path?: string });
     const text = result.ok
       ? JSON.stringify({ ok: true, removed: result.removed }, null, 2)
       : JSON.stringify({ ok: false, error: result.error }, null, 2);
@@ -84,7 +86,7 @@ export async function createMcpServer(): Promise<McpServer> {
       query: z.string().describe('Cypher query string'),
     }),
   }, async (args) => {
-    const result = await handleCypher(args as { query: string });
+    const result = await cypher(args as { query: string });
     const text = result.ok
       ? JSON.stringify({ ok: true, rows: result.rows }, null, 2)
       : JSON.stringify({ ok: false, error: result.error }, null, 2);
@@ -98,7 +100,7 @@ export async function createMcpServer(): Promise<McpServer> {
       kind: z.string().optional().describe('Filter by node label'),
     }),
   }, async (args) => {
-    const result = await handleQuery(args as { query: string; kind?: string });
+    const result = await query(args as { query: string; kind?: string });
     const text = result.ok
       ? JSON.stringify({ ok: true, nodes: result.nodes }, null, 2)
       : JSON.stringify({ ok: false, error: result.error }, null, 2);
@@ -111,7 +113,7 @@ export async function createMcpServer(): Promise<McpServer> {
       name: z.string().describe('Symbol name or id'),
     }),
   }, async (args) => {
-    const result = await handleContext(args as { name: string });
+    const result = await context(args as { name: string });
     const text = result.ok
       ? JSON.stringify({ ok: true, node: result.node, edges: result.edges }, null, 2)
       : JSON.stringify({ ok: false, error: result.error }, null, 2);
@@ -125,7 +127,7 @@ export async function createMcpServer(): Promise<McpServer> {
       direction: z.enum(['upstream', 'downstream']).optional().describe('upstream = what references this; downstream = what this references'),
     }),
   }, async (args) => {
-    const result = await handleImpact(args as { target: string; direction?: 'upstream' | 'downstream' });
+    const result = await impact(args as { target: string; direction?: 'upstream' | 'downstream' });
     const text = result.ok
       ? JSON.stringify({ ok: true, nodes: result.nodes }, null, 2)
       : JSON.stringify({ ok: false, error: result.error }, null, 2);
@@ -140,7 +142,7 @@ export async function createMcpServer(): Promise<McpServer> {
       dry_run: z.boolean().optional().describe('If true, only return preview (default true)'),
     }),
   }, async (args) => {
-    const result = await handleRename(args as { symbol: string; newName: string; dry_run?: boolean });
+    const result = await rename(args as { symbol: string; newName: string; dry_run?: boolean });
     const text = result.ok
       ? JSON.stringify({ ok: true, preview: result.preview, message: result.message }, null, 2)
       : JSON.stringify({ ok: false, error: result.error }, null, 2);
@@ -153,7 +155,7 @@ export async function createMcpServer(): Promise<McpServer> {
       output_path: z.string().optional().describe('Optional path to write .md (if server can write)'),
     }),
   }, async (args) => {
-    const result = await handleGenerateMap(args as { output_path?: string });
+    const result = await generateMap(args as { output_path?: string });
     const text = result.ok
       ? JSON.stringify({ ok: true, markdown: result.markdown }, null, 2)
       : JSON.stringify({ ok: false, error: result.error }, null, 2);
@@ -170,7 +172,6 @@ export async function createMcpServer(): Promise<McpServer> {
     return { contents: [{ uri: 'sysmledgraph://schema', mimeType: 'text/markdown', text }] };
   });
 
-  // Per-path resources (plan step 13 optional)
   const paths = await listIndexedPaths();
   for (const p of paths) {
     const uriContext = `sysmledgraph://context/${encodeURIComponent(p)}`;

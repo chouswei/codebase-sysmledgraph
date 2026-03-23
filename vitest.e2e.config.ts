@@ -1,19 +1,13 @@
 import { defineConfig } from 'vitest/config';
 import tsconfig from './tsconfig.json' with { type: 'json' };
 
-const vitestDefaultExclude = [
-  '**/node_modules/**',
-  '**/dist/**',
-  '**/cypress/**',
-  '**/.{idea,git,cache,output,temp}/**',
-  '**/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build,eslint,prettier}.config.*',
-  '**/*.e2e.test.ts',
-];
-
+/** Daemon subprocess + TCP client (kept out of default test run on Windows). */
 export default defineConfig({
   test: {
     globals: false,
-    exclude: vitestDefaultExclude,
+    include: ['test/integration/**/*.e2e.test.ts'],
+    /** Global `setStorageRoot` + worker.port path — one e2e file at a time. */
+    fileParallelism: false,
   },
   resolve: {
     extensions: ['.ts'],

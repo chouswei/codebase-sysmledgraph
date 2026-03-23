@@ -11,7 +11,11 @@ import { cleanIndex } from '../storage/clean.js';
 import { addToRegistry } from '../storage/registry.js';
 import { openGraphStore } from '../graph/graph-store.js';
 import { runIndexer } from '../indexer/indexer.js';
-import { useWorker, index, listIndexed, clean, closeWorker } from '../worker/gateway.js';
+import { useWorker, useLongLivedWorkerSync, index, listIndexed, clean, closeGraphClient } from '../worker/gateway.js';
+
+function routeViaGateway(): boolean {
+  return useWorker() || useLongLivedWorkerSync();
+}
 
 export function configureStorageRoot(root: string | undefined): void {
   if (root) setStorageRoot(root);
@@ -22,11 +26,11 @@ export async function cmdAnalyze(paths: string[]): Promise<{ ok: boolean; filesP
     return { ok: false, error: 'At least one path required' };
   }
   const resolved = paths.map((raw) => resolve(raw));
-  if (useWorker()) {
+  if (routeViaGateway()) {
     try {
       return await index({ paths: resolved });
     } finally {
-      closeWorker();
+      closeGraphClient();
     }
   }
   const dbPath = getDbPathForIndexedPath(resolved[0]);
@@ -47,12 +51,12 @@ export async function cmdAnalyze(paths: string[]): Promise<{ ok: boolean; filesP
 }
 
 export async function cmdList(): Promise<{ ok: boolean; paths: string[]; error?: string }> {
-  if (useWorker()) {
+  if (routeViaGateway()) {
     try {
       const r = await listIndexed();
       return r.ok ? { ok: true, paths: r.paths ?? [] } : { ok: false, paths: [], error: r.error };
     } finally {
-      closeWorker();
+      closeGraphClient();
     }
   }
   try {
@@ -64,12 +68,12 @@ export async function cmdList(): Promise<{ ok: boolean; paths: string[]; error?:
 }
 
 export async function cmdClean(path: string | undefined): Promise<{ ok: boolean; error?: string }> {
-  if (useWorker()) {
+  if (routeViaGateway()) {
     try {
       const result = await clean({ path });
       return result.ok ? { ok: true } : { ok: false, error: result.error };
     } finally {
-      closeWorker();
+      closeGraphClient();
     }
   }
   const result = await cleanIndex(path);

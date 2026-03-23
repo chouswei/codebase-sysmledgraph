@@ -168,6 +168,16 @@ Edges come from **symbols** (Package, PartDef, etc.). The indexer gets symbols v
 - **Optional MCP fallback:** Set **`SYSMEDGRAPH_USE_MCP_SYMBOLS=1`** and run index-and-map again. When the LSP returns no symbols, the indexer will try the **MCP** `getSymbols` tool (same sysml-v2-lsp server, different API). If the MCP returns symbols, they are mapped to nodes and edges. Note: spawning the MCP server from a script can be slow or hit init timeouts; if that happens, use Cursor MCP for ad‑hoc symbol queries and rely on the LSP for indexing when your LSP build supports documentSymbol.
 - **LSP behaviour:** Some builds of sysml-v2-lsp may not implement `documentSymbol` or may return a different response shape. We now pass `rootUri` and `workspaceFolders` in initialize and support both array and wrapped `{ data: [] }` responses; we also map LSP **SymbolKind** (number) to a label when `detail` is missing.
 
+### 6.1 Long-lived graph worker (sysmledgraph, not sysml-v2-lsp)
+
+The **sysmledgraph** MCP server and CLI can talk to a **TCP daemon** that is the **only** process holding the Kuzu lock for a storage root (`graph.kuzu` under `SYSMEDGRAPH_STORAGE_ROOT`).
+
+- **Start:** `sysmledgraph worker start --detach` (same machine, same storage root as CLI/MCP).
+- **Discover:** Daemon writes `worker.port` (and PID) under the storage root; clients also respect **`SYSMLEGRAPH_WORKER_URL`** (e.g. `127.0.0.1:PORT`).
+- **Strict mode:** **`SYSMLEGRAPH_WORKER_STRICT=1`** — graph tools fail fast if the daemon is unreachable (no silent fallback to in-process DB).
+- **Do not mix:** Avoid opening the same DB **in-process** in one tool while another uses the daemon for the same root unless you understand the lock. Prefer **one mode**: either rely on the daemon for everything graph-related, or stop the daemon and use in-process only.
+- **Cursor:** MCP runs in a **separate process** from the daemon. Use the **same** `SYSMEDGRAPH_STORAGE_ROOT` in both environments when testing.
+
 ---
 
 ## 7. Debugging
@@ -183,7 +193,7 @@ Edges come from **symbols** (Package, PartDef, etc.). The indexer gets symbols v
 |-------|------------|
 | **No edges in graph-map.md** | Edges come from LSP (or MCP fallback) symbols. Ensure **SYSMLLSP_SERVER_PATH** points to a built `server.js` (with `--stdio`). Run `node scripts/debug-lsp-symbols.mjs <file.sysml>` to see raw LSP output. Use **DEBUG_SYSMLEGRAPH_SYMBOLS=1** when indexing to see if LSP or MCP is used. |
 | **LSP server not found** | Run `npm install` (or in `lsp/` for a dedicated install). On Windows, if install fails use `npm install --ignore-scripts` then build; set **SYSMLLSP_SERVER_PATH** to your built `dist/server/server.js`. |
-| **Kuzu "Could not set lock on file"** | Only one process can open the same DB. Close Cursor (or disable the sysmledgraph MCP) before running CLI analyze/export, or use a different **SYSMEDGRAPH_STORAGE_ROOT** (e.g. a temp folder) for the run. |
+| **Kuzu "Could not set lock on file"** | Only one process can open the same DB. **Option A:** Run **`sysmledgraph worker start --detach`** and point CLI + MCP at the same storage root so both use TCP (see §6.1). **Option B:** Close Cursor / disable sysmledgraph MCP before CLI analyze/export. **Option C:** Use a different **SYSMEDGRAPH_STORAGE_ROOT** for one of the clients. |
 | **Validate a SysML file** | `node scripts/validate-sysml-file.mjs <path-to.sysml>`. Exit 0 = no issues; exit 1 = syntax/semantic issues or script error. Requires sysml-v2-lsp MCP server (same as indexing). |
 
 ---
@@ -198,4 +208,5 @@ Edges come from **symbols** (Package, PartDef, etc.). The indexer gets symbols v
 | Use from Cursor             | Enable sysml-v2 in `.cursor/mcp.json` and call MCP tools                 |
 | Use from Node/scripts       | `createSysmlMcpClient()` and call methods; run from project root         |
 | Index and see the map       | LSP (`server.js`); kuzu built; `npm run index-and-map` (see §6)          |
+| Avoid Kuzu lock with CLI+MCP | Long-lived worker: §6.1; **docs/INSTALL.md**                             |
 | Validate a file             | `node scripts/validate-sysml-file.mjs <path>` (exit 0/1)                 |

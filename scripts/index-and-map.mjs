@@ -33,7 +33,7 @@ if (code !== 0) {
 }
 
 console.log('\nGenerating map...');
-const map = spawn('node', ['scripts/generate-map.mjs', 'graph-map.md'], {
+const map = spawn('node', ['dist/bin/cli.js', 'graph', 'map', 'graph-map.md'], {
   cwd: process.cwd(),
   stdio: 'inherit',
 });

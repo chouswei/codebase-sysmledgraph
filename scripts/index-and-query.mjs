@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 /**
- * Index one path then run a count query in the same process (same DB).
- * Usage: set SYSMLLSP_SERVER_PATH then run:
- *   node scripts/index-and-query.mjs "c:\Projects\SystemDesign\sysml-v2-models\projects\sysmledgraph"
+ * Index one path then run a node count via the graph gateway (merged graph.kuzu under storage root).
+ * Uses SYSMEDGRAPH_STORAGE_ROOT like the CLI/MCP (default ~/.sysmledgraph).
+ *
+ * Usage (from repo root after npm run build):
+ *   node scripts/index-and-query.mjs <path>
+ *
+ * LSP: same defaults as index-and-map — set SYSMLLSP_SERVER_PATH if needed.
  */
 import { homedir } from 'os';
-import { join } from 'path';
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
+import { join, resolve } from 'path';
+import { existsSync } from 'fs';
 
 const pathToIndex = process.argv[2];
 if (!pathToIndex) {
@@ -15,25 +18,36 @@ if (!pathToIndex) {
   process.exit(1);
 }
 
-const storageRoot = join(homedir(), '.sysmledgraph');
-const sanitized = pathToIndex.replace(/[:\\/]/g, '_').replace(/_+/g, '_') || 'root';
-const dbPath = join(storageRoot, 'db', sanitized + '.kuzu');
+if (!process.env.SYSMLLSP_SERVER_PATH) {
+  const lspServer = resolve(process.cwd(), 'lsp/node_modules/sysml-v2-lsp/dist/server/server.js');
+  const rootServer = resolve(process.cwd(), 'node_modules/sysml-v2-lsp/dist/server/server.js');
+  if (existsSync(lspServer)) process.env.SYSMLLSP_SERVER_PATH = lspServer;
+  else if (existsSync(rootServer)) process.env.SYSMLLSP_SERVER_PATH = rootServer;
+}
 
-// Use compiled indexer and graph
-const { openGraphStore } = await import('../dist/src/graph/graph-store.js');
-const { runIndexer } = await import('../dist/src/indexer/indexer.js');
+const storageRoot = process.env.SYSMEDGRAPH_STORAGE_ROOT?.trim() || join(homedir(), '.sysmledgraph');
+const absPath = resolve(process.cwd(), pathToIndex);
+
+const { setStorageRoot } = await import('../dist/src/storage/location.js');
+const { index, cypher, closeGraphClient } = await import('../dist/src/worker/gateway.js');
+const { NODE_TABLE } = await import('../dist/src/graph/schema.js');
+
+setStorageRoot(storageRoot);
 
 try {
-  const store = await openGraphStore(dbPath);
-  const result = await runIndexer(store, { roots: [pathToIndex] });
-  console.log('Index result:', result);
+  const ir = await index({ paths: [absPath] });
+  console.log('Index result:', ir);
+  if (!ir.ok) {
+    closeGraphClient();
+    process.exit(1);
+  }
 
-  const conn = store.getConnection();
-  const q = await conn.query('MATCH (n) RETURN count(n) AS count');
-  const rows = await q.getAll();
-  console.log('Count:', rows);
-  process.exit(result.ok ? 0 : 1);
+  const cr = await cypher({ query: `MATCH (n:${NODE_TABLE}) RETURN count(n) AS count` });
+  console.log('Cypher result:', cr);
+  closeGraphClient();
+  process.exit(cr.ok ? 0 : 1);
 } catch (err) {
   console.error('Error:', err);
+  closeGraphClient();
   process.exit(1);
 }

@@ -12,7 +12,13 @@ export {
   invalidateGraphStoreCache,
   closeGraphStoreCache,
 } from './graph/graph-store.js';
-export { getStorageRoot, setStorageRoot, getDbPathForIndexedPath, getMergedDbPath } from './storage/location.js';
+export {
+  getStorageRoot,
+  setStorageRoot,
+  getDbPathForIndexedPath,
+  getMergedDbPath,
+  getWorkerPortPath,
+} from './storage/location.js';
 export { listIndexedPaths } from './storage/list.js';
 export { cleanIndex } from './storage/clean.js';
 export { readRegistry, readRegistryFull, addToRegistry, removeFromRegistry, clearRegistry } from './storage/registry.js';

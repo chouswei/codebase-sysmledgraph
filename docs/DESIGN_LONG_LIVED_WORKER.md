@@ -2,7 +2,7 @@
 
 **Goal:** One process owns the Kuzu DB at a time. CLI and MCP never open the DB directly; they talk to a single long-lived worker so lock conflicts never stop the DB process.
 
-**Status:** Design only. Not implemented.
+**Status:** **Core implemented** (daemon, socket client, gateway, CLI `worker` commands, MCP via gateway). Thin npm scripts delegate to **`sysmledgraph graph export` / `graph map`** (gateway-aware). See **docs/PLAN.md** Phase 5 and **docs/INSTALL.md**.
 
 ---
 
@@ -437,3 +437,96 @@ Closing one connection must not imply others leave **Ready** unless the whole pr
 
 - **Adequate for design:** §8–§9 together cover startup, shutdown, client paths, and connection-level errors.
 - **Refine before implement:** (1) strict vs fallback as explicit client branches; (2) lazy DB open vs **OpeningDB** state; (3) multi-connection serialization policy; (4) align coarse **NotStarted** failure edges with distinct exit codes in docs or code comments.
+
+---
+
+## 11. Evaluation of interactions
+
+This section evaluates **how actors interact** (§7) under the proposed daemon model: concurrency, ordering, shared configuration, and failure propagation.
+
+### 11.1 Interaction matrix (two actors, same storage root)
+
+Rows and columns are **processes**; cell = outcome if both are active **at the same time** (or in quick succession where relevant).
+
+|  | **Daemon (Running)** | **CLI (daemon client)** | **MCP (daemon client)** | **CLI (in-process, no daemon)** | **MCP (in-process)** |
+|--|------------------------|-------------------------|-------------------------|----------------------------------|----------------------|
+| **Daemon** | — | OK: CLI talks to TCP only | OK: MCP talks to TCP only | **Bad:** CLI opens DB → lock conflict with daemon | **Bad:** MCP opens DB → lock conflict |
+| **CLI (daemon)** | OK | OK (sequential or parallel TCP sessions if daemon serializes) | OK (same) | N/A | N/A |
+| **MCP (daemon)** | OK | OK | OK if daemon serializes; risk if not (§10.4) | N/A | N/A |
+| **CLI (in-process)** | **Bad** | N/A | **Bad** with MCP in-process | OK alone | **Bad** with MCP |
+| **MCP (in-process)** | **Bad** | **Bad** | **Bad** | **Bad** | **Bad** (two MCPs) |
+
+**Takeaway:** Interaction is **safe** only when **every** actor that touches the graph uses the **same mode**: either all go through the daemon for that storage root, or none uses the daemon and only one in-process holder exists. **Mixed mode** (daemon + any in-process open on same DB) is always **Bad**.
+
+### 11.2 Configuration coupling
+
+| Shared artifact | Who reads it | Mismatch effect |
+|-----------------|--------------|-----------------|
+| **`SYSMEDGRAPH_STORAGE_ROOT`** | Daemon at start; CLI/MCP before connect | Clients resolve wrong port file path or talk to a daemon serving a different DB tree. |
+| **Port file** (`worker.port` or similar) | Clients discover daemon | Stale port after crash: client connects to wrong process or gets refused. Mitigation: PID in file + heartbeat or `worker status`. |
+| **`SYSMLEGRAPH_WORKER_URL`** | Clients | Overrides port file; must point at daemon for **same** storage root. |
+| **Init `storageRoot`** (per connection) | Daemon | If enforced, mismatch → connection closed (§9.3). |
+
+**Evaluation:** Interactions are **correct** only if storage root and worker address are **consistent** across Cursor config, shell, and CI. Document a single “source of truth” checklist for users.
+
+### 11.3 Ordering and causal dependencies
+
+| Scenario | Required order | Violation |
+|----------|----------------|-----------|
+| Query / context / impact | Index exists for paths | Empty or stale graph; not a lock issue but confusing UX. |
+| **generate-map** after **analyze** | Analyze completes before map reads graph | Today satisfied by sequential spawn in `index-and-map.mjs`. With daemon, both are requests; same ordering preserved if script awaits CLI exit before generate-map. |
+| **clean** then **index** | Clean finishes before new index | If concurrent clients: clean and index interleaved → undefined graph content; daemon should **serialize** or document “no concurrent clean + index”. |
+| **worker stop** while MCP active | Stop closes daemon | MCP’s next tool call fails (disconnect); user must restart daemon or disable worker mode. |
+
+**Evaluation:** The daemon does not automatically enforce **semantic** ordering beyond what each handler does; **concurrent** `index` and `clean` from CLI and MCP is a design risk → recommend **serialized dispatch** (§10.4) for all mutating ops.
+
+### 11.4 Failure propagation across boundaries
+
+```mermaid
+sequenceDiagram
+    participant MCP as MCP process
+    participant TCP as TCP
+    participant D as Daemon
+    participant K as Kuzu
+    MCP->>TCP: connect
+    TCP->>D: accept
+    MCP->>D: init + request index
+    D->>K: write
+    alt Kuzu error
+        K-->>D: throw
+        D-->>MCP: { id, error }
+    end
+    alt Daemon crash
+        D--xTCP: FIN
+        MCP-->>MCP: ECONNRESET / pending reject
+    end
+    alt Daemon graceful stop
+        D-->>MCP: close or { id, error: shutting down }
+    end
+```
+
+| Failure origin | Observed by client | Mitigation |
+|----------------|--------------------|------------|
+| Kuzu in handler | `{ id, error }`; connection stays up | Caller shows tool error. |
+| Daemon OOM / kill -9 | Socket error; pending requests reject | User restarts daemon; MCP may need reconnect logic. |
+| Graceful **worker stop** | Drain or error responses, then close | MCP: treat as transient; document “restart worker”. |
+| Stale port file | Connect to wrong host/port | **worker status** + timeout on connect. |
+
+### 11.5 Orthogonal channels (no direct interaction)
+
+| Channel A | Channel B | Interaction |
+|-----------|-----------|-------------|
+| **MCP stdio** (Cursor ↔ sysmledgraph MCP) | **Worker TCP** (client ↔ daemon) | None at protocol level; both terminate in the **same Node process** only if MCP does not use daemon (in-process). If MCP uses daemon, MCP process holds **two** roles: MCP server to Cursor + TCP client to daemon — still no stdio between them. |
+| **sysmledgraph** LSP / sysml-v2-lsp MCP | Graph daemon | Independent; indexing uses LSP for symbols, daemon for graph only. |
+
+**Evaluation:** No hidden coupling between MCP framing and worker NDJSON; errors on one channel do not automatically surface on the other unless the same user action triggers both (e.g. index uses LSP then graph).
+
+### 11.6 Summary: interaction verdict
+
+| Criterion | Verdict |
+|-----------|---------|
+| **Eliminates DB lock between CLI and MCP** | Yes, if **both** use daemon and **no** in-process opener for that root. |
+| **Safe under misconfiguration** | No — mixed daemon + in-process causes lock conflict; strict mode + docs reduce risk. |
+| **Concurrent MCP + CLI** | OK with daemon + serialization; undefined if mutating ops overlap without ordering. |
+| **Scripts (export-map pipeline)** | OK after scripts become daemon clients; until then, same risks as §7.1. |
+| **Operational clarity** | Improve with **worker status**, consistent env, and a short “who must use daemon” table in INSTALL. |

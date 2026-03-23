@@ -41,3 +41,13 @@ export function getMergedDbPath(): string {
 export function getDbPathForIndexedPath(_indexedPath: string): string {
   return getMergedDbPath();
 }
+
+/** Path to `worker.port` (long-lived daemon publishes host port here). */
+export function getWorkerPortPath(): string {
+  return join(storageRoot, 'worker.port');
+}
+
+/** Exclusive startup lock: daemon creates this file while running (PID inside). */
+export function getWorkerLockPath(): string {
+  return join(storageRoot, 'worker.lock');
+}
