@@ -52,6 +52,7 @@ Global **`--storage <path>`** sets the storage root (same as **`SYSMEDGRAPH_STOR
 1. Use the **same** **`SYSMEDGRAPH_STORAGE_ROOT`** for daemon, CLI, and MCP when sharing one graph.
 2. Do **not** mix **daemon + in-process** open of the **same** `graph.kuzu` (Kuzu lock errors).
 3. After a crash, **`worker.port`** / **`worker.lock`** may be stale; use **`worker status`**, **`worker stop`**, or remove files only when sure the old PID is dead (see **INSTALL.md**).
+4. **MCP `SYSMLEGRAPH_SUBSCRIBER=1`** (codebase Subscriber) hides **index** / **clean** tools from the assistant only; **one daemon per storage root** still comes from **`worker.lock`** and **`worker start`** (see **INSTALL.md**).
 
 ## Related
 

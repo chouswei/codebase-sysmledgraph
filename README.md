@@ -1,9 +1,12 @@
 # sysmledgraph
 
-Path-only SysML indexer: builds a knowledge graph from `.sysml` files and exposes it via **MCP** (for Cursor AI) and **CLI**. The LSP used for indexing lives in **`lsp/`** and is used only by this repo.
+**Why:** When SysML v2 is the **single source of truth** for structure, connections, and requirements—especially in **AI-assisted (“vibe”) workflows**—you still need a way to treat the model like **navigable data**: “what uses this?”, “what’s connected?”, “give me context for the assistant.” This tool is that layer for **paths of `.sysml` files**, the same way [**GitNexus**](https://github.com/abhigyanpatwari/GitNexus) turns a **code** tree into a queryable graph for agents—here the **symbols and relations** come from the **SysML language server** (and optional MCP fallback), not from parsing C/JavaScript.
+
+**What:** A **path-only indexer** that builds a **Kuzu** knowledge graph and exposes it through a **CLI** and an **MCP server** (e.g. Cursor): index, query, context, impact, Cypher, map generation, and more. Intended as the **graph tool for a SysML Modelbase** (where you index); a **second workspace (codebase)** can **subscribe** to the **same DB** via the **long-lived TCP worker** and shared **`SYSMEDGRAPH_STORAGE_ROOT`**—see [docs/PLAN.md](docs/PLAN.md) (product positioning, Phase 7). A **long-lived TCP worker** (localhost) avoids Kuzu file-lock fights between processes. Indexing uses **`lsp/`** (or **`SYSMLLSP_SERVER_PATH`**) to resolve symbols; see [Install](#install).
 
 - **npm:** [sysmledgraph](https://www.npmjs.com/package/sysmledgraph) — `npm install sysmledgraph`
 - **Repo:** [github.com/chouswei/codebase-sysmledgraph](https://github.com/chouswei/codebase-sysmledgraph)
+- **Background:** [Integrating SysML as the single source of truth in vibe-coding](https://www.linkedin.com/pulse/integrating-sysml-single-source-truth-vibe-coding-szu-wei-chou-owhtc/) (LinkedIn article)
 
 ## Contents
 
@@ -76,6 +79,7 @@ Or one step from repo root: `npm run index-and-map` (optional path argument).
 | **`SYSMEDGRAPH_STORAGE_ROOT`** | Graph storage directory (default `~/.sysmledgraph`). Merged DB: `<root>/db/graph.kuzu`. |
 | **`SYSMLEGRAPH_WORKER_URL`** | Long-lived worker endpoint, e.g. `127.0.0.1:PORT` (overrides reading `worker.port` from storage root). |
 | **`SYSMLEGRAPH_WORKER_STRICT`** | Set to **`1`** so graph clients **fail** if the TCP worker is unreachable (no silent in-process fallback). |
+| **`SYSMLEGRAPH_SUBSCRIBER`** | Set to **`1`** in a **Subscriber** (codebase) MCP config so **`indexDbGraph`** / **`clean_index`** are **not registered** (Publisher still indexes). Does **not** enforce a single daemon—see **`worker.lock`** / **INSTALL.md**. |
 | **`SYSMLEGRAPH_WORKER_PORT`** | Daemon bind port; **`0`** = OS-assigned (default when unset). Used when running `worker:daemon` / `daemon.js` directly. |
 | **`SYSMLLSP_SERVER_PATH`** | Path to sysml-v2-lsp **`server.js`** if not using default `lsp/` or `node_modules` resolution. |
 | **`SYSMEDGRAPH_USE_MCP_SYMBOLS`** | Set to **`1`** to fall back to MCP `getSymbols` when LSP returns no symbols (indexing). |

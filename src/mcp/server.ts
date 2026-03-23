@@ -24,6 +24,11 @@ import { listIndexedPaths } from '../storage/list.js';
 const SERVER_NAME = 'sysmledgraph';
 const SERVER_VERSION = '0.8.2';
 
+/** Subscriber (codebase) MCP: omit index/clean tools—use Publisher + shared worker; does not replace worker.lock for single daemon. */
+function isMcpSubscriberMode(): boolean {
+  return process.env.SYSMLEGRAPH_SUBSCRIBER === '1';
+}
+
 function toolResult(content: string, isError = false): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
   const out: { content: Array<{ type: 'text'; text: string }>; isError?: boolean } = {
     content: [{ type: 'text', text: content }],
@@ -42,19 +47,25 @@ export async function createMcpServer(): Promise<McpServer> {
     { capabilities: { tools: {}, resources: {} } }
   );
 
-  server.registerTool('indexDbGraph', {
-    description: 'Build the knowledge graph from path(s). Input: path (string) or paths (string[]).',
-    inputSchema: z.object({
-      path: z.string().optional().describe('Single path to index'),
-      paths: z.array(z.string()).optional().describe('Multiple paths to index'),
-    }),
-  }, async (args) => {
-    const result = await index(args as { path?: string; paths?: string[] });
-    const text = result.ok
-      ? JSON.stringify({ ok: true, filesProcessed: result.filesProcessed }, null, 2)
-      : JSON.stringify({ ok: false, error: result.error }, null, 2);
-    return toolResult(text, !result.ok);
-  });
+  if (isMcpSubscriberMode()) {
+    process.stderr.write(
+      '[sysmledgraph-mcp] SYSMLEGRAPH_SUBSCRIBER=1: indexDbGraph and clean_index are not registered (use Publisher workspace to index).\n'
+    );
+  } else {
+    server.registerTool('indexDbGraph', {
+      description: 'Build the knowledge graph from path(s). Input: path (string) or paths (string[]).',
+      inputSchema: z.object({
+        path: z.string().optional().describe('Single path to index'),
+        paths: z.array(z.string()).optional().describe('Multiple paths to index'),
+      }),
+    }, async (args) => {
+      const result = await index(args as { path?: string; paths?: string[] });
+      const text = result.ok
+        ? JSON.stringify({ ok: true, filesProcessed: result.filesProcessed }, null, 2)
+        : JSON.stringify({ ok: false, error: result.error }, null, 2);
+      return toolResult(text, !result.ok);
+    });
+  }
 
   server.registerTool('list_indexed', {
     description: 'List indexed path(s).',
@@ -67,18 +78,20 @@ export async function createMcpServer(): Promise<McpServer> {
     return toolResult(text, !result.ok);
   });
 
-  server.registerTool('clean_index', {
-    description: 'Remove index for path or all. Params: optional path.',
-    inputSchema: z.object({
-      path: z.string().optional().describe('Path to clean, or omit to clean all'),
-    }),
-  }, async (args) => {
-    const result = await clean(args as { path?: string });
-    const text = result.ok
-      ? JSON.stringify({ ok: true, removed: result.removed }, null, 2)
-      : JSON.stringify({ ok: false, error: result.error }, null, 2);
-    return toolResult(text, !result.ok);
-  });
+  if (!isMcpSubscriberMode()) {
+    server.registerTool('clean_index', {
+      description: 'Remove index for path or all. Params: optional path.',
+      inputSchema: z.object({
+        path: z.string().optional().describe('Path to clean, or omit to clean all'),
+      }),
+    }, async (args) => {
+      const result = await clean(args as { path?: string });
+      const text = result.ok
+        ? JSON.stringify({ ok: true, removed: result.removed }, null, 2)
+        : JSON.stringify({ ok: false, error: result.error }, null, 2);
+      return toolResult(text, !result.ok);
+    });
+  }
 
   server.registerTool('cypher', {
     description: 'Run a Cypher query on the graph. Uses first indexed path.',

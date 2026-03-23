@@ -8,6 +8,8 @@ Single reference for every MCP tool available in this workspace. Use when you ne
 
 Server: run `node dist/mcp/index.js` or `sysmledgraph-mcp`. Add to `.cursor/mcp.json` to use from Cursor.
 
+**Subscriber mode:** If **`SYSMLEGRAPH_SUBSCRIBER=1`**, **`indexDbGraph`** and **`clean_index`** are **omitted** from the MCP tool list (use the Publisher workspace to index). Read-only / query tools remain.
+
 Graph: one `Node` table (`id`, `name`, `path`, `label`); rel tables per edge type (`IN_DOCUMENT`, `IN_PACKAGE`, `PARENT`, `TYPES`, `REFERENCES`, `IMPORTS`, etc.). Labels: Document, Package, PartDef, PartUsage, ConnectionDef, ConnectionUsage, PortDef, Port, RequirementDef, Block, ValueType, Action, StateMachine.
 
 | Tool | Description |

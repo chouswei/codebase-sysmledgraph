@@ -6,7 +6,8 @@ This repo works as an **MCP server** so Cursor (and other MCP clients) can use t
 
 - **Server name:** `sysmledgraph`
 - **Transport:** stdio (Cursor spawns the process and talks over stdin/stdout)
-- **Tools:** indexDbGraph, list_indexed, clean_index, cypher, query, context, impact, rename, generate_map
+- **Tools (Publisher default):** indexDbGraph, list_indexed, clean_index, cypher, query, context, impact, rename, generate_map  
+  **Subscriber:** set **`SYSMLEGRAPH_SUBSCRIBER=1`** in MCP **`env`** so **indexDbGraph** and **clean_index** are **not** registered (see **docs/INSTALL.md** — single daemon is enforced by **worker.lock**, not by hiding tools).
 - **Resources:** `sysmledgraph://context`, `sysmledgraph://schema` (and per-path variants when paths are indexed)
 
 Cursor AI can call these tools when you ask about your SysML model (e.g. “what uses Modelbase?”, “show me the graph map”, “list symbols in the deploy model”).
@@ -45,6 +46,16 @@ Create or edit **`.cursor/mcp.json`** in the project root:
 - **cwd** must be the **workspace root** (where `dist/` and the indexed paths live). Use `"."` when opening this repo as the workspace.
 - **SYSMEDGRAPH_STORAGE_ROOT:** Default is `~/.sysmledgraph`. Set to a custom path if you use one for the CLI.
 - **SYSMLLSP_SERVER_PATH (optional):** Only if not using the default. When running from this repo, the LSP in **`lsp/`** is used automatically after **`npm run setup-lsp`**.
+
+**Subscriber (codebase) — same graph as Modelbase:** Use the **same** **`SYSMEDGRAPH_STORAGE_ROOT`** as the Publisher, set **`SYSMLEGRAPH_WORKER_URL`** to the running daemon (see **`worker.port`**), and add **`SYSMLEGRAPH_SUBSCRIBER": "1"`** so the assistant does not see **indexDbGraph** / **clean_index**. Example **`env`** fragment:
+
+```json
+"env": {
+  "SYSMEDGRAPH_STORAGE_ROOT": "C:/Users/YOU/.sysmledgraph",
+  "SYSMLEGRAPH_WORKER_URL": "127.0.0.1:9123",
+  "SYSMLEGRAPH_SUBSCRIBER": "1"
+}
+```
 
 **Option B — Absolute path to built server**
 

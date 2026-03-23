@@ -1,7 +1,7 @@
 {
   "name": "sysmledgraph",
   "version": "0.8.2",
-  "description": "Path-only SysML indexer: knowledge graph (Kuzu), MCP server (query, context, impact, rename, cypher), CLI (analyze, list, clean)",
+  "description": "GitNexus-style graph for SysML v2: index .sysml paths via LSP into Kuzu; MCP + CLI (query, context, impact, cypher); optional localhost TCP worker",
   "type": "module",
   "main": "dist/src/index.js",
   "bin": {

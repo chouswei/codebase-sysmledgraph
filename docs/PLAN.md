@@ -1,5 +1,21 @@
 # Plan: LSP Client Fixes, Indexing & Graph Worker
 
+## Product positioning: Modelbase, sysmledgraph, and the codebase Subscriber
+
+**Modelbase** (SysML v2 **system-models** repo) holds `.sysml` as **single source of truth**—authoring, validate/preview, exports, traceability. **sysmledgraph** (this package) is the **graph tool for the Modelbase**: it **indexes** modelbase paths into **Kuzu** and exposes **CLI + MCP** (query, context, impact, Cypher, map, …). The **publisher** workflow lives with the model: index and refresh the graph where the model lives.
+
+**Codebase** (implementation repo—application, firmware, services) should reach the **same graph** without maintaining a second copy of the index. A **Subscriber** is that second consumer: same **`graph.kuzu` / same storage root**, connected over the **long-lived TCP worker** so the codebase’s Cursor (or CLI) uses **read/query tools** against the DB the modelbase already built—**no second process opening the Kuzu file**, easy access to **model structure** while coding.
+
+| Role | Where it runs | What it does |
+|------|----------------|--------------|
+| **SysML MCP** (e.g. sysml-v2-lsp) | Modelbase (and codebase when editing `.sysml`) | Parse, validate, preview—**textual model** |
+| **sysmledgraph (publisher)** | Modelbase | **`analyze` / `indexDbGraph`**, own **`SYSMEDGRAPH_STORAGE_ROOT`**, optional **`worker start --detach`** |
+| **sysmledgraph (Subscriber)** | Codebase | **Same** `SYSMEDGRAPH_STORAGE_ROOT` + **`SYSMLEGRAPH_WORKER_URL`** (or visible **`worker.port`**) → TCP to daemon; use **query / context / impact / …**; avoid re-indexing unless you intentionally refresh |
+
+**Principle:** **One graph DB** for one model slice; **Modelbase publishes** (index + daemon); **codebase subscribes** (TCP client to the same DB).
+
+---
+
 **Indexing / LSP plan:** Phases 1–4 **complete** (v0.7.0). **Phase 5** (long-lived graph worker) is **implemented**. **Phase 6** (design-doc alignment with the shipped worker) is **complete**—**DESIGN_LONG_LIVED_WORKER.md** refresh, **PLAN_IMPLEMENT** as implementation log, **WORKER_CONTRACT.md**.
 
 **Released:** v0.8.2 — indexer **two-phase** edge write; optional **`SYSMLEGRAPH_INDEX_REFERENCES=1`** (MCP REFERENCES); **DESIGN** §8.2 **Failed** state; **docs/PUBLISH.md**. v0.8.1 — **WORKER_CONTRACT.md**, Phase 6, CI matrix, npm **`lsp/`** explicit **files**. v0.8.0 — long-lived worker, gateway, CI, README/docs refresh. v0.7.0 — LSP in `lsp/`, MCP, npm publish. (Earlier: v0.4.3.)
@@ -23,6 +39,7 @@
 - **✅ Phase 6 (docs):** **DESIGN_LONG_LIVED_WORKER.md** refreshed; **PLAN_IMPLEMENT_LONG_LIVED_WORKER.md** → implementation log; **WORKER_CONTRACT.md** added.
 - **✅ CI:** **`.github/workflows/ci.yml`** matrix **windows-latest** + **ubuntu-latest** (build, unit tests, **`test:daemon`**).
 - **✅ v0.8.2:** Indexer two-phase edge write; optional **`SYSMLEGRAPH_INDEX_REFERENCES=1`**; **DESIGN** §8.2 **Failed**; **docs/PUBLISH.md**.
+- **Doctrine (PLAN):** **sysmledgraph** = graph **tool for Modelbase**; **Subscriber** pattern = codebase MCP/CLI **same DB via worker** (see § Product positioning, Phase 7).
 
 ## Plan
 
@@ -92,14 +109,26 @@
 - [x] Shipped worker path not described as “proposed only.”
 - [x] **PLAN_IMPLEMENT_LONG_LIVED_WORKER.md** is not an open v1 todo list.
 
+### Phase 7: Subscriber (codebase) — same DB as Modelbase — 🔄 Planned
+
+**Goal:** Document and (optionally) productize **Subscriber** setup so an **implementation repo** uses **sysmledgraph MCP** only as a **client of the existing graph** (same `graph.kuzu` via daemon).
+
+| # | Task | Status |
+|---|------|--------|
+| 7.1 | **Docs:** Recipe in **INSTALL** / **MCP_SERVER_FOR_CURSOR**: Modelbase `worker start`, shared `SYSMEDGRAPH_STORAGE_ROOT`, codebase `SYSMLEGRAPH_WORKER_URL` + same env; when to avoid `indexDbGraph` in Subscriber | ⏳ |
+| 7.2 | Env **`SYSMLEGRAPH_SUBSCRIBER=1`** — MCP omits **`indexDbGraph`** / **`clean_index`** (Subscriber); **INSTALL** documents **worker.lock** as real single-daemon guarantee | ✅ |
+| 7.3 | **Docs:** Cross-machine Subscriber (SSH tunnel vs shared FS) — **docs/INSTALL.md** § *Two Git repos* | ✅ |
+
+**Today:** Subscriber works if storage root is **shared** (same clone, bind mount, or synced path) **and** Modelbase runs the daemon; codebase MCP points at **`SYSMLEGRAPH_WORKER_URL`**.
+
 ## MCP server for Cursor AI
 
-So Cursor AI can use the graph, the repo runs as an **MCP server** (stdio). See **docs/MCP_SERVER_FOR_CURSOR.md** for the full plan.
+**Modelbase:** Run **sysmledgraph** MCP (and/or CLI) as **publisher**—index model paths, optionally **`worker start --detach`**. **Codebase:** Run the **same** **sysmledgraph** MCP package as **Subscriber**—configure **same** `SYSMEDGRAPH_STORAGE_ROOT` and **`SYSMLEGRAPH_WORKER_URL`** (see Phase 7). Add **sysml-v2** MCP where you edit `.sysml`. See **docs/MCP_SERVER_FOR_CURSOR.md**.
 
 - **Entrypoint:** `mcp/index.ts` → `dist/mcp/index.js`; bin `sysmledgraph-mcp` and `npm run mcp`.
-- **Cursor:** Add **sysmledgraph** to `.cursor/mcp.json` (command `node`, args `dist/mcp/index.js`, cwd `.`). Example added in this repo’s `.cursor/mcp.json`.
-- **Tools:** indexDbGraph, list_indexed, clean_index, cypher, query, context, impact, rename, generate_map. Resources: sysmledgraph://context, sysmledgraph://schema.
-- **Prereq:** Index at least one path (CLI or indexDbGraph); same storage as CLI. Kuzu lock: only one process per DB (see Troubleshooting in MCP_INTERACTION_GUIDE). **Optional:** run **`sysmledgraph worker start --detach`** and use the same storage root so CLI + MCP use the TCP worker (**docs/INSTALL.md**, **docs/DESIGN_LONG_LIVED_WORKER.md**).
+- **Cursor:** Add **sysmledgraph** to `.cursor/mcp.json` (`command` / `args` / `env` per workspace—publisher vs Subscriber). Example in this repo’s `.cursor/mcp.json` is **publisher-style** (local storage).
+- **Tools:** Publisher: indexDbGraph, list_indexed, clean_index, cypher, query, context, impact, rename, generate_map. Subscriber (**`SYSMLEGRAPH_SUBSCRIBER=1`**): same minus indexDbGraph / clean_index. Resources: sysmledgraph://context, sysmledgraph://schema.
+- **Prereq:** **Publisher:** index at least one path. **Subscriber:** daemon reachable + same storage root; Kuzu opened only in daemon (**docs/INSTALL.md**, **docs/DESIGN_LONG_LIVED_WORKER.md**, **docs/WORKER_CONTRACT.md**).
 
 ## Success Criteria
 
