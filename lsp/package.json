@@ -10,6 +10,6 @@
     "postinstall": "node -e \"console.log('LSP server deps ready. Run: npm start (stdio) or use path in SYSMLLSP_SERVER_PATH')\""
   },
   "dependencies": {
-    "sysml-v2-lsp": "^0.7.0"
+    "sysml-v2-lsp": "^0.8.0"
   }
 }

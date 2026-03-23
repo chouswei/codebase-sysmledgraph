@@ -22,7 +22,7 @@ import { getSchemaContent } from './resources/schema.js';
 import { listIndexedPaths } from '../storage/list.js';
 
 const SERVER_NAME = 'sysmledgraph';
-const SERVER_VERSION = '0.8.0';
+const SERVER_VERSION = '0.8.2';
 
 function toolResult(content: string, isError = false): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
   const out: { content: Array<{ type: 'text'; text: string }>; isError?: boolean } = {

@@ -25,10 +25,10 @@ Path-only SysML indexer: builds a knowledge graph from `.sysml` files and expose
 
 ## Version
 
-- **Current package version:** **0.8.0** — bump this line when you release; [`package.json`](package.json) `"version"` is what npm publishes.
+- **Current package version:** **0.8.2** — bump this line when you release; [`package.json`](package.json) `"version"` is what npm publishes.
 - **Policy:** [Semantic versioning](https://semver.org/) — **MAJOR** / **MINOR** / **PATCH** as usual. CLI and MCP tool names and shapes are treated as stable within a major line unless release notes say otherwise.
 
-To ship: set `"version"` in `package.json`, note changes (e.g. `release-notes-v*.md`), run `npm run build`, `npm test`, and `npm run test:daemon`, then `npm publish` — see [Publishing (npm)](#publishing-npm).
+To ship: follow [docs/PUBLISH.md](docs/PUBLISH.md) (version, notes, `npm run build` / `test` / `test:daemon`, `npm publish`) — summary in [Publishing (npm)](#publishing-npm).
 
 ## Requirements
 
@@ -79,6 +79,7 @@ Or one step from repo root: `npm run index-and-map` (optional path argument).
 | **`SYSMLEGRAPH_WORKER_PORT`** | Daemon bind port; **`0`** = OS-assigned (default when unset). Used when running `worker:daemon` / `daemon.js` directly. |
 | **`SYSMLLSP_SERVER_PATH`** | Path to sysml-v2-lsp **`server.js`** if not using default `lsp/` or `node_modules` resolution. |
 | **`SYSMEDGRAPH_USE_MCP_SYMBOLS`** | Set to **`1`** to fall back to MCP `getSymbols` when LSP returns no symbols (indexing). |
+| **`SYSMLEGRAPH_INDEX_REFERENCES`** | Set to **`1`** to run an extra MCP **`getReferences`** pass after indexing and add **REFERENCES** edges (slow; needs **setup-lsp** / **sysml-v2-lsp**). See [docs/MCP_INTERACTION_GUIDE.md](docs/MCP_INTERACTION_GUIDE.md) §6. |
 | **`SYSMLEDGRAPH_USE_WORKER`** | Set to **`1`** to use a **per-command** stdio graph worker instead of in-process Kuzu (short-lived child). |
 
 ### Global CLI option
@@ -174,15 +175,17 @@ Configure **sysmledgraph** in **`.cursor/mcp.json`** (see [docs/MCP_SERVER_FOR_C
 | [docs/MCP_SERVER_FOR_CURSOR.md](docs/MCP_SERVER_FOR_CURSOR.md) | Cursor MCP config, tools |
 | [docs/MCP_INTERACTION_GUIDE.md](docs/MCP_INTERACTION_GUIDE.md) | LSP vs MCP, indexing, troubleshooting |
 | [docs/PLAN.md](docs/PLAN.md) | Roadmap and status |
-| [docs/PLAN_IMPLEMENT_LONG_LIVED_WORKER.md](docs/PLAN_IMPLEMENT_LONG_LIVED_WORKER.md) | Worker implementation plan |
+| [docs/PUBLISH.md](docs/PUBLISH.md) | npm publish checklist (maintainers) |
+| [docs/PLAN_IMPLEMENT_LONG_LIVED_WORKER.md](docs/PLAN_IMPLEMENT_LONG_LIVED_WORKER.md) | Worker implementation log (v1 shipped) |
 | [docs/DESIGN_LONG_LIVED_WORKER.md](docs/DESIGN_LONG_LIVED_WORKER.md) | Worker design, errors, exit semantics |
+| [docs/WORKER_CONTRACT.md](docs/WORKER_CONTRACT.md) | Worker NDJSON contract, files, CLI (operator summary) |
 | [docs/PLAN_INDEPENDENT_LSP.md](docs/PLAN_INDEPENDENT_LSP.md) | Why **`lsp/`** exists |
 | [docs/TOOLS.md](docs/TOOLS.md) | Tool-oriented notes |
 | [lsp/README.md](lsp/README.md) | LSP folder layout |
 
 ## Continuous integration
 
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs **`npm ci`**, **`npm run build`**, **`npm test`**, and **`npm run test:daemon`** on **windows-latest** (Node 20).
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs **`npm ci`**, **`npm run build`**, **`npm test`**, and **`npm run test:daemon`** on **windows-latest** and **ubuntu-latest** (Node 20).
 
 ## Publishing (npm)
 
@@ -190,7 +193,7 @@ Others can install with **`npm install sysmledgraph`** or run **`npx sysmledgrap
 
 1. **Name:** **`sysmledgraph`** in `package.json` (or a scoped name if needed).
 2. **Build:** **`prepublishOnly`** runs **`npm run build`** so **`dist/`** ships in the tarball.
-3. **Files:** **`package.json`** **`files`** lists **`dist`**, **`scripts`**, **`lsp`**, **`README.md`**, **`docs`**. Consumers run **`npm run setup-lsp`** inside the package for **`lsp/`**.
+3. **Files:** **`package.json`** **`files`** lists **`dist`**, **`scripts`**, explicit **`lsp/`** files (**`package.json`**, **`package-lock.json`**, **`README.md`**, **`test-server.mjs`** — not the whole folder, so **`lsp/node_modules`** is never packed), **`README.md`**, **`docs`**. Consumers run **`npm run setup-lsp`** inside the package to install **sysml-v2-lsp** under **`lsp/`**.
 4. **Publish:**
    ```bash
    npm login

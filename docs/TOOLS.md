@@ -37,6 +37,8 @@ Build the graph from one or more directory paths. Relative paths are resolved ag
 
 **Returns:** `{ ok: true, filesProcessed: number }` or `{ ok: false, error: string }`
 
+**Environment:** **`SYSMLEGRAPH_INDEX_REFERENCES=1`** — after the normal index pass, run MCP **`getReferences`** and add **REFERENCES** edges (slow). See **MCP_INTERACTION_GUIDE** §6.
+
 ---
 
 ### list_indexed

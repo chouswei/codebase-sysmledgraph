@@ -2,14 +2,14 @@
 
 ## Quick start
 
-1. **Root:** `npm install` then `npm run build`.
-2. **LSP (for indexing):** The canonical LSP for this repo is in **`lsp/`**. Run **`npm run setup-lsp`** (or `cd lsp && npm install`) so the indexer can use it. No need to set **`SYSMLLSP_SERVER_PATH`** when using this default.
+1. **Root:** `npm install` then `npm run build`. On **Windows**, if **`sysml-v2-lsp`** fails during install (its script uses shell syntax), use **`npm install --ignore-scripts`** then **`node node_modules/kuzu/install.js`**.
+2. **LSP (for indexing):** The canonical LSP for this repo is in **`lsp/`**. Run **`npm run setup-lsp`** (uses `--ignore-scripts`) or **`cd lsp && npm install --ignore-scripts`**. No need to set **`SYSMLLSP_SERVER_PATH`** when using this default.
 3. **Index:** `npx sysmledgraph analyze <path>` or use the MCP tool **indexDbGraph** after enabling the sysmledgraph MCP in Cursor (see docs/MCP_SERVER_FOR_CURSOR.md).
 
 ## LSP
 
 - **Source:** [sysml-v2-lsp](https://www.npmjs.com/package/sysml-v2-lsp) (npm). The only copy used by sysmledgraph for indexing is in **`lsp/`** (see docs/PLAN_INDEPENDENT_LSP.md).
-- **Setup:** `npm run setup-lsp` installs it in `lsp/` with `--ignore-scripts` (recommended on Windows). If you prefer a manual install: `cd lsp && npm install`.
+- **Setup:** `npm run setup-lsp` installs it in `lsp/` with `--ignore-scripts` (required on **Windows** for **sysml-v2-lsp ≥ 0.8**). Manual: `cd lsp && npm install --ignore-scripts`.
 
 ### Updating language support (“grammar” via the server)
 

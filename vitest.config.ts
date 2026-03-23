@@ -14,6 +14,12 @@ export default defineConfig({
   test: {
     globals: false,
     exclude: vitestDefaultExclude,
+    /** Native addon: do not prebundle (Vite fails to resolve exports). */
+    server: {
+      deps: {
+        external: ['kuzu'],
+      },
+    },
   },
   resolve: {
     extensions: ['.ts'],

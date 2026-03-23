@@ -8,6 +8,11 @@ export default defineConfig({
     include: ['test/integration/**/*.e2e.test.ts'],
     /** Global `setStorageRoot` + worker.port path — one e2e file at a time. */
     fileParallelism: false,
+    server: {
+      deps: {
+        external: ['kuzu'],
+      },
+    },
   },
   resolve: {
     extensions: ['.ts'],

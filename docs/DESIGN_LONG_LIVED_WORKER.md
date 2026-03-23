@@ -1,20 +1,55 @@
 # Design: Long-Lived Graph Worker
 
-**Goal:** One process owns the Kuzu DB at a time. CLI and MCP never open the DB directly; they talk to a single long-lived worker so lock conflicts never stop the DB process.
+**Goal:** One process owns the Kuzu DB at a time. When the long-lived worker is in use, CLI and MCP do not open Kuzu in-process; they send requests to that process over TCP so lock conflicts between them go away.
 
-**Status:** **Core implemented** (daemon, socket client, gateway, CLI `worker` commands, MCP via gateway). Thin npm scripts delegate to **`sysmledgraph graph export` / `graph map`** (gateway-aware). See **docs/PLAN.md** Phase 5 and **docs/INSTALL.md**.
+**Status:** **Core implemented.** This document mixes **as-built** facts (below), **historical rationale** (§1–2), **design decisions** (§3–6, largely implemented), and **spec-style** statecharts and error catalogs (§8–11). If the repo and this file disagree, **trust the code**.
 
 ---
 
-## 1. Problem
+## As-built (v0.8+)
+
+What actually ships today:
+
+| Piece | Role |
+|-------|------|
+| **`src/worker/daemon.ts`** | TCP server on `127.0.0.1`; OS-assigned or `SYSMLEGRAPH_WORKER_PORT`; writes **`worker.port`** (line 1: port, line 2: PID); **`worker.lock`** (exclusive create + PID, cleared on shutdown); **serialized** `dispatch()` per process; `shutdown` RPC; SIGINT/SIGTERM. |
+| **`src/worker/dispatch.ts`** | Shared method switch for stdio **graph-worker** and daemon (same NDJSON methods). |
+| **`src/worker/socket-client.ts`** | Connect, `init`, `requestLongLived`; **`SYSMLEGRAPH_WORKER_URL`** or **`worker.port`**; connect timeout; one **retry** on transient disconnect unless **`SYSMLEGRAPH_WORKER_STRICT=1`**. |
+| **`src/worker/gateway.ts`** | Order: long-lived TCP → stdio worker (`SYSMLEDGRAPH_USE_WORKER=1`) → in-process handlers; **`closeGraphClient`**. |
+| **`src/cli/worker-commands.ts`** + **`bin/cli.ts`** | `worker start [--detach]`, `stop`, `status`; exit **2** if `worker start` and TCP already up; stale **`worker.port`** + live PID handling; **`worker status`** reports stale port file. |
+| **`src/mcp/server.ts`** | All graph tools/resources go through **gateway** (not direct `handle*` + `openGraphStore` in the hot path). |
+
+**Storage:** `SYSMEDGRAPH_STORAGE_ROOT` (default `~/.sysmledgraph`); merged DB **`db/graph.kuzu`**.
+
+**CLI:** `sysmledgraph worker start` runs the daemon in the **foreground** unless **`--detach`** (background child). Not `--daemon` (older draft name).
+
+**Source of truth:** `daemon.ts`, `gateway.ts`, `socket-client.ts`, `worker-commands.ts`, `server.ts`.
+
+**Operator summary (no statecharts):** **docs/WORKER_CONTRACT.md**.
+
+### Implementation map (topic → code)
+
+| Topic | Location | Notes |
+|-------|----------|--------|
+| Port file | `storage/location.ts` → `getWorkerPortPath()` | `{storageRoot}/worker.port` |
+| Lock file | `storage/location.ts` → `getWorkerLockPath()` | `{storageRoot}/worker.lock`; acquired after stale clear, before bind |
+| NDJSON protocol | `protocol.ts`, `graph-worker.ts`, `daemon.ts` | `init` then methods; same as stdio worker |
+| Gateway routing | `gateway.ts` | `useLongLivedWorkerSync()` from env + port file |
+| MCP tool → graph | `server.ts` → `gateway.*` | index, listIndexed, clean, cypher, query, … |
+| E2E daemon tests | `test/integration/*.e2e.test.ts`, `vitest.e2e.config.ts` | `npm run test:daemon` |
+| User-facing how-to | **docs/INSTALL.md**, **README.md**, **MCP_INTERACTION_GUIDE.md** §6.1 | Env, worker, Kuzu lock |
+
+---
+
+## 1. Problem (historical motivation)
 
 - **Kuzu** is embedded and uses file locking: only one process can open a given DB path.
-- Today: **CLI** and **MCP server** each open the DB in their own process (or spawn a short-lived worker with `SYSMLEDGRAPH_USE_WORKER=1`). Running both at once (e.g. `sysmledgraph analyze` while Cursor uses the MCP) causes "Could not set lock on file".
-- We already have a **graph worker** (`src/worker/graph-worker.ts`) that can own the DB and handle the same operations over **stdio** (NDJSON). It is only used when `SYSMLEDGRAPH_USE_WORKER=1`, and the CLI spawns it per command then closes it; the MCP server does not use it at all. So there is no single long-lived owner.
+- **Without a long-lived worker:** **CLI** and **MCP** could each open the DB **in-process** (or CLI could spawn a **short-lived** stdio worker with `SYSMLEDGRAPH_USE_WORKER=1`). Running both at once on the same DB (e.g. `analyze` while Cursor uses MCP) caused **"Could not set lock on file"**.
+- **Short-lived stdio worker** (`src/worker/graph-worker.ts`): used when `SYSMLEDGRAPH_USE_WORKER=1`; CLI spawns it per command. It does not by itself unify MCP + CLI unless both are refactored to use the same mechanism; the **TCP daemon + gateway** addresses that for MCP and CLI when configured.
 
 ---
 
-## 2. Current Worker (Reference)
+## 2. Short-lived stdio worker (reference — still used)
 
 - **Entry:** `dist/src/worker/graph-worker.js`; run as `node graph-worker.js` with stdin/stdout.
 - **Protocol:** NDJSON: request `{ id, method, params? }`, response `{ id, result? } | { id, error? }`. First message must be `init` with `params.storageRoot`.
@@ -23,11 +58,11 @@
 
 ---
 
-## 3. Proposed: Long-Lived Daemon Worker
+## 3. Long-lived daemon worker (design — **implemented**)
 
 ### 3.1 Concept
 
-- **One** long-running process (the “daemon”) is the only process that opens the Kuzu DB.
+- **One** long-running process (the “daemon”) is the only process that opens the Kuzu DB for that storage root when clients use long-lived mode.
 - It listens on a **transport** (see below) and serves the same request/response protocol as today (NDJSON).
 - **CLI** and **MCP server** act as **clients**: they connect to the daemon instead of opening the DB or spawning a child worker.
 - Daemon is started **out-of-band** (user runs `sysmledgraph worker start` or a systemd/supervisor unit) or optionally **auto-started** on first client connection (with a single-instance lock so only one daemon runs per storage root).
@@ -42,11 +77,11 @@
 
 **Recommendation:** Start with **TCP on localhost** (e.g. `127.0.0.1:port`). Port can be fixed (e.g. `0` = OS-assigned, then write port to a well-known file under storage root or `~/.sysmledgraph`) so clients know where to connect. Alternatively: one configurable port (e.g. `SYSMLEGRAPH_WORKER_PORT=9192`) or a port file under `SYSMEDGRAPH_STORAGE_ROOT` / `~/.sysmledgraph` (e.g. `worker.port`).
 
-### 3.3 Single Instance
+### 3.3 Single instance
 
 - Only one daemon should run per **storage root** (and thus per DB path).
-- **Mechanism:** Before opening the DB, the daemon creates a **lock file** (e.g. `{storageRoot}/.worker.lock` or `{storageRoot}/worker.pid`) and holds an exclusive file lock (or writes PID and checks process exists). If lock fails or another daemon is already bound to the chosen port, exit with a clear error.
-- **Clients:** If they try to start a second daemon (e.g. “worker start” when one is already running), they get “already running” and exit; they do not open the DB themselves.
+- **Mechanism (as-built):** **`worker.lock`** under the storage root — exclusive create (`wx`), PID written inside, file kept open until shutdown; stale lock removed if PID is not alive. Stale **`worker.port`** removed when TCP probe shows port closed. Second instance fails with a clear error if lock is held by a live process or TCP already responds on the recorded port.
+- **Clients:** **`worker start`** exits **2** if TCP already answers for **`worker.port`**; does not open Kuzu in the CLI process.
 
 ### 3.4 Storage Root
 
@@ -61,16 +96,14 @@
 
 ### 3.6 Lifecycle
 
-- **Start:** `sysmledgraph worker start` (or `npx sysmledgraph worker start`) — starts the daemon in the foreground or background (e.g. `--daemon` to fork and write PID to a file). Reads `SYSMEDGRAPH_STORAGE_ROOT`; binds to port (or port file); takes lock; runs the same dispatch loop as current graph-worker but over the socket.
+- **Start:** `sysmledgraph worker start` (or `npx …`) — daemon in **foreground** by default; **`--detach`** spawns a background process (stdio ignored). Reads `SYSMEDGRAPH_STORAGE_ROOT`; acquires **`worker.lock`**, binds TCP, writes **`worker.port`** (+ PID). ~~`--daemon`~~ was a draft name — use **`--detach`**.
 - **Stop:** `sysmledgraph worker stop` — reads port (or PID) from the same well-known location, sends a “shutdown” request or SIGTERM to the PID so the daemon closes the DB and exits.
 - **Status:** `sysmledgraph worker status` — check lock file / port file; if present, show “running” and port (or PID); else “not running”.
 
-### 3.7 Client Behavior (CLI and MCP)
+### 3.7 Client behavior (CLI and MCP) — **as-built**
 
-- **CLI** (`analyze`, `list`, `clean`, etc.): If a long-lived worker is configured (e.g. env `SYSMLEGRAPH_WORKER_URL=http://127.0.0.1:9192` or “use port file under storage root”), **connect to the daemon** and send the same requests. If the daemon is not running, either:
-  - **Strict:** Fail with “worker not running; start with `sysmledgraph worker start`”, or
-  - **Optional fallback:** If no worker URL and no daemon, fall back to current in-process behavior (open DB in CLI) so existing usage still works.
-- **MCP server:** Same: if worker URL/port is configured (or found via port file), connect to the daemon for all graph operations. Otherwise fall back to in-process (current behavior). MCP server must **not** open the DB when the daemon is the designated owner.
+- **CLI** (`analyze`, `list`, `clean`, `graph export|map`, …): If **`worker.port`** exists or **`SYSMLEGRAPH_WORKER_URL`** is set, **gateway** uses the **socket client** to the daemon. If unreachable: **`SYSMLEGRAPH_WORKER_STRICT=1`** → fail; else fall back to stdio worker or in-process.
+- **MCP server:** **All graph tools** use **gateway** (`server.ts`). Same routing as CLI: long-lived → stdio worker → in-process. When the daemon is the designated owner and reachable, the MCP process does not open Kuzu for those ops.
 
 ### 3.8 Backward Compatibility
 
@@ -79,28 +112,23 @@
 
 ---
 
-## 4. Implementation Outline
+## 4. Implementation outline — **completed**
 
-1. **Daemon entrypoint**  
-   New entrypoint (e.g. `src/worker/daemon.ts` or extend `graph-worker.ts` with a “listen” mode): read storage root from env; create lock file; bind TCP server (or Unix socket); accept connections; for each connection, run the same NDJSON init + request/response loop as current graph-worker (reuse `dispatch()` and handlers).
+The numbered plan below was the pre-ship checklist; **items 1–6 are done** in the files listed in **As-built** and **Implementation map**. **Item 7 (docs)** is maintained in **INSTALL.md**, **README.md**, and **MCP_INTERACTION_GUIDE.md** (ongoing tweaks).
 
-2. **Port / URL discovery**  
-   Daemon writes `port` (and optionally PID) to a file under storage root (e.g. `worker.port`). Clients read that file to get `host:port` (host fixed to 127.0.0.1 when using this file).
+1. **Daemon entrypoint** — **`daemon.ts`**: storage root, **`worker.lock`**, TCP bind, NDJSON per connection, shared **`dispatch()`**.
 
-3. **CLI worker commands**  
-   `sysmledgraph worker start [--daemon]`, `sysmledgraph worker stop`, `sysmledgraph worker status`. Implement in `src/cli/commands.ts` or a small `worker-cli.ts`.
+2. **Port / URL discovery** — **`worker.port`** + optional **`SYSMLEGRAPH_WORKER_URL`** (see `socket-client.ts`).
 
-4. **Socket client**  
-   New client (e.g. `src/worker/socket-client.ts`) that connects to `host:port`, sends NDJSON lines, receives NDJSON lines. Reuse the same `request(method, params)` API as the current client. Used by gateway when “long-lived worker” is configured.
+3. **CLI worker commands** — **`worker-commands.ts`**, **`bin/cli.ts`**: `start [--detach]`, `stop`, `status`.
 
-5. **Gateway / config**  
-   Gateway uses long-lived worker when e.g. `SYSMLEGRAPH_WORKER_URL` is set or port file exists under storage root; otherwise fall back to “spawn child worker” (current `SYSMLEDGRAPH_USE_WORKER=1`) or in-process. This keeps a single code path for “use a worker” vs “use in-process”.
+4. **Socket client** — **`socket-client.ts`** (used by **gateway**).
 
-6. **MCP server**  
-   MCP server uses the same gateway; when gateway uses the socket client, MCP never opens the DB.
+5. **Gateway** — **`gateway.ts`** (long-lived → stdio worker → in-process).
 
-7. **Docs**  
-   Update INSTALL.md and MCP_INTERACTION_GUIDE (troubleshooting) to describe: run `sysmledgraph worker start` before using CLI and Cursor; or set `SYSMLEGRAPH_WORKER_URL`; and that only one daemon per storage root.
+6. **MCP server** — **`server.ts`** uses **gateway** for graph tools.
+
+7. **Docs** — User-facing worker + env + troubleshooting (see INSTALL, README, MCP guide §6.1 / §8).
 
 ---
 
@@ -122,7 +150,7 @@
 | **Single instance** | Lock file (or PID file) under storage root; bind one port. |
 | **CLI** | Optional: connect to daemon when configured; else in-process. |
 | **MCP** | Same: connect to daemon when configured; else in-process. |
-| **Lifecycle** | `worker start` / `worker stop` / `worker status`; optional `--daemon`. |
+| **Lifecycle** | `worker start` / `worker stop` / `worker status`; background via **`--detach`**. |
 
 This design gives a single DB owner (the daemon) so that CLI and MCP never compete for the lock, while keeping backward compatibility when no daemon is used.
 
@@ -130,21 +158,20 @@ This design gives a single DB owner (the daemon) so that CLI and MCP never compe
 
 ## 7. Interaction with other processes
 
-This section lists every process or script that touches the Kuzu DB today, and how each would interact with the long-lived worker.
+This section contrasts **legacy in-process** access with the **gateway + optional daemon** model. **As-built:** graph operations from CLI and MCP go through **gateway** first.
 
-### 7.1 Processes that touch the DB today
+### 7.1 Who opens Kuzu (as-built vs fallback)
 
-| Process / entrypoint | How it opens the DB | Code path |
-|----------------------|---------------------|-----------|
-| **CLI** (`bin/cli.js` → `commands.ts`) | If `SYSMLEDGRAPH_USE_WORKER=1`: spawns **child** graph-worker (stdio), uses it, then **closes** it. Else: **in-process** `openGraphStore()` + `runIndexer()`; `store.close()` in `finally`. | `cmdAnalyze` → gateway `index()` or `openGraphStore` + `runIndexer`; `cmdList`/`cmdClean` same pattern. |
-| **MCP server** (Cursor runs `sysmledgraph-mcp` → `mcp/index.ts` → `server.ts`) | **In-process only.** Does not use the gateway. Each tool calls handlers that use `getCachedOrOpenGraphStore(dbPath)`; one cached store per dbPath for the lifetime of the MCP process. | `server.ts` → `handleIndexDbGraph`, `handleCypher`, etc. → `getCachedOrOpenGraphStore()` in each tool. |
-| **export-graph.mjs** | **Own process.** Creates `new kuzu.Database(dbPath)` and `new kuzu.Connection(db)` directly. | Reads storage root and DB path; opens Kuzu in the script process. |
-| **generate-map.mjs** | **Own process.** Same: `new kuzu.Database(dbPath)`, `new kuzu.Connection(db)`. | Same pattern; used by `index-and-map.mjs` as a second step (after CLI analyze). |
-| **index-and-map.mjs** | **Indirect.** Spawns two children: (1) `node dist/bin/cli.js analyze <path>` (CLI, which may open DB in-process or via short-lived worker), (2) `node scripts/generate-map.mjs` (which opens the DB again in a different process). | Two separate processes; the second opens the DB while the first may have just closed it (if CLI in-process) or never held it (if CLI used worker and closed it). So often no conflict only because CLI exits before generate-map runs. |
-| **index-and-query.mjs** | **In-process.** Imports `openGraphStore`, `runIndexer`; opens DB in the script process. | Single script process; same lock rules as any other single process. |
-| **storage/clean.ts** | Used by MCP `clean_index` and by CLI `cmdClean` (via gateway or in-process). Uses `getCachedOrOpenGraphStore` then `closeGraphStoreCache`. | Part of MCP tool handlers and CLI path; not a separate process. |
+| Process / entrypoint | When daemon / port file / URL configured | When not configured (typical fallback) |
+|----------------------|------------------------------------------|----------------------------------------|
+| **CLI** (`commands.ts`, `graph-artifacts.ts`) | **Gateway** → TCP to daemon (no DB in CLI). | **In-process** `openGraphStore` + handlers, or stdio worker if `SYSMLEDGRAPH_USE_WORKER=1`. |
+| **MCP** (`server.ts`) | **Gateway** → TCP to daemon (no DB in MCP for those tools). | **In-process** via gateway → same handlers + `getCachedOrOpenGraphStore`. |
+| **`scripts/export-graph.mjs` / `generate-map.mjs`** | Delegate to **`sysmledgraph graph export|map`** → gateway → daemon. | Same CLI path; may open DB in-process if no worker. |
+| **`scripts/index-and-map.mjs`** | Spawns CLI **analyze** then **graph map**; both honor gateway/daemon. | Same; second step no longer uses a separate raw Kuzu open in the thin scripts. |
+| **`scripts/index-and-query.mjs`** | Uses **gateway** `index` + `cypher` (merged DB). | N/A — always gateway in current script. |
+| **clean / list** | Via gateway. | Via gateway or in-process per routing rules. |
 
-**Conclusion (current):** Any two of the following running at the same time can conflict on the same DB: CLI (in-process), MCP server, export-graph.mjs, generate-map.mjs, index-and-query.mjs. The only way to avoid conflict today is to run only one of them at a time, or use `SYSMLEDGRAPH_USE_WORKER=1` for CLI (which still doesn’t help MCP or the scripts).
+**Lock conflict today:** Still possible if **one** side uses the **daemon** and **another** opens the **same** `graph.kuzu` **in-process** (e.g. old tooling, or mixed env). **Mitigation:** same **`SYSMEDGRAPH_STORAGE_ROOT`**, use **worker** for both CLI and MCP, or **`SYSMLEGRAPH_WORKER_STRICT=1`** to avoid silent fallback.
 
 ### 7.2 Process diagram — current (no daemon)
 
@@ -167,7 +194,7 @@ This section lists every process or script that touches the Kuzu DB today, and h
     Conflict: any two of these open the same DB → "Could not set lock on file"
 ```
 
-### 7.3 Process diagram — with long-lived worker (proposed)
+### 7.3 Process diagram — with long-lived worker (**implemented**)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -195,19 +222,18 @@ This section lists every process or script that touches the Kuzu DB today, and h
 
 - **CLI:** Gateway uses socket client when worker URL/port is set; no DB open in CLI.
 - **MCP server:** Same; tools go through gateway → socket client; no DB open in MCP process.
-- **Scripts:** To avoid opening the DB themselves, they must either (a) call the CLI (e.g. `sysmledgraph analyze` already goes through daemon if configured) or (b) use a small client that sends requests to the daemon. For **generate-map** and **export-graph**, we’d add a daemon method that returns the map or export data (or we implement a “run cypher and return rows” and have the script request that), so the script process never opens Kuzu. **index-and-map.mjs** would stay as “spawn CLI analyze then spawn generate-map”; once both CLI and generate-map talk to the daemon, no script process opens the DB.
+- **Scripts:** Thin wrappers call **`sysmledgraph graph export|map`** and **`analyze`**; those use **gateway** and therefore the daemon when configured. **`index-and-query.mjs`** uses **gateway** directly.
 
 ### 7.4 Summary: who talks to whom
 
-| Actor | Current | With long-lived worker |
-|-------|---------|-------------------------|
-| CLI | Opens DB in-process, or spawns short-lived worker (stdio) then closes it | Connects to daemon over TCP; no DB open. |
-| MCP server | Opens DB in-process (getCachedOrOpenGraphStore) | Connects to daemon over TCP; no DB open. |
-| export-graph.mjs | Opens DB in-process (new kuzu.Database) | Must use daemon (e.g. request export or cypher); no DB open. |
-| generate-map.mjs | Opens DB in-process (new kuzu.Database) | Must use daemon (e.g. request generateMap or equivalent); no DB open. |
-| index-and-map.mjs | Spawns CLI then generate-map (two children; second opens DB) | Spawns CLI then generate-map; both children talk to daemon; no DB open in script. |
-| index-and-query.mjs | Opens DB in-process | Must use daemon (e.g. request index + query); no DB open. |
-| Daemon | N/A | Single process; only one that opens Kuzu; serves all above via TCP. |
+| Actor | No daemon / in-process fallback | Daemon configured + reachable |
+|-------|----------------------------------|------------------------------|
+| CLI | In-process or stdio worker (`SYSMLEDGRAPH_USE_WORKER=1`) | Gateway → TCP; no DB open in CLI. |
+| MCP server | Gateway → in-process handlers + `getCachedOrOpenGraphStore` | Gateway → TCP; no DB open in MCP. |
+| export-graph.mjs / generate-map.mjs | CLI **`graph export|map`** may open DB in-process | Same CLI → gateway → TCP. |
+| index-and-map.mjs | Two CLI subprocesses | Both honor gateway/daemon. |
+| index-and-query.mjs | Gateway (always in current script) | Gateway → TCP. |
+| Daemon | N/A | Single process; opens Kuzu; serves TCP clients. |
 
 ---
 
@@ -219,7 +245,7 @@ This section lists every process or script that touches the Kuzu DB today, and h
 stateDiagram-v2
     [*] --> NotStarted
     NotStarted --> Starting : worker start
-    Starting --> Binding : read storage root, create lock file
+    Starting --> Binding : read storage root, acquire worker.lock
     Binding --> OpeningDB : bind TCP port, write port file
     OpeningDB --> Running : open Kuzu DB (or lazy on first request)
     Running --> Running : accept connections, serve requests
@@ -249,15 +275,19 @@ stateDiagram-v2
     Deciding --> InProcess : no daemon configured
     Deciding --> Resolving : daemon configured (URL or port file)
     Resolving --> Connecting : host:port known
-    Resolving --> InProcess : port file missing / daemon not running (fallback)
+    Resolving --> InProcess : port file missing / no endpoint (fallback if not strict)
+    Resolving --> Failed : strict and no valid endpoint
     Connecting --> Connected : TCP connected
-    Connecting --> InProcess : connect failed (fallback if allowed)
+    Connecting --> InProcess : connect failed (fallback if not strict)
+    Connecting --> Failed : strict and connect / init failed
     Connected --> Connected : send init, then request(method, params)
     Connected --> Disconnected : socket close / error
-    Disconnected --> Connecting : retry (optional)
-    Disconnected --> InProcess : give up, fallback
+    Disconnected --> Connecting : retry (optional, not strict)
+    Disconnected --> InProcess : give up, fallback (not strict)
+    Disconnected --> Failed : strict and unrecoverable
     InProcess --> [*] : open DB in-process, do op, close
     Connected --> [*] : result received, keep connection for next op (MCP) or close (CLI)
+    Failed --> [*] : return error to caller (no in-process fallback)
 ```
 
 - **Deciding** — Gateway checks whether to use daemon (env `SYSMLEGRAPH_WORKER_URL` or port file under storage root) or in-process.
@@ -265,7 +295,8 @@ stateDiagram-v2
 - **Resolving** — Resolve daemon address (read port file or parse URL).
 - **Connecting** — TCP connect to daemon.
 - **Connected** — Send `init`, then one or more `request(method, params)`; receive responses.
-- **Disconnected** — Socket closed or error; retry or fall back to in-process.
+- **Disconnected** — Socket closed or error; retry or fall back to in-process when **not** strict.
+- **Failed (StrictError)** — Terminal error when **`SYSMLEGRAPH_WORKER_STRICT=1`**: daemon was expected (URL or port file path policy) but endpoint missing, TCP/init failed, or unrecoverable disconnect; **no** fallback to in-process. Implemented in **`gateway.ts`** / **`socket-client.ts`**.
 
 ### 8.3 Per-connection state (daemon side, one TCP connection)
 
@@ -406,10 +437,8 @@ Closing one connection must not imply others leave **Ready** unless the whole pr
 | Starting failures → exit 1,2,3 | Partially | §8.1 merges lock and port as one edge to **NotStarted**; §9 splits exit 2 vs 3 — **implementation** must map each failure to the right code; diagram is coarse. |
 | Binding failures → 4, 5 | Only bind error | Port **file** write failure (§9 exit 5) is a sub-transition of **Binding**; add label or footnote in §8.1 if desired. |
 | OpeningDB → Stopping on error | Yes | Aligns with exit 6 after **Releasing**. |
-| Client strict vs fallback | Partially | §8.2 shows **InProcess** from **Resolving**/**Connecting**; strict mode should **not** take those edges — treat **Strict** as a separate **Deciding** outcome → terminal error state (not drawn). |
+| Client strict vs fallback | Yes | §8.2 includes **Failed** (**StrictError**) and strict transitions; **`SYSMLEGRAPH_WORKER_STRICT`**. |
 | Per-connection **Ready** errors | Partially | §8.3 lacks a self-loop label “handler error → stay Ready”; §9.3 and §9.5 describe it. |
-
-**Recommendation:** Add optional **StrictError** (or **Failed**) state on the client diagram: `Deciding --> Failed : daemon required but unreachable` with `[*]` from **Failed**, to avoid conflating strict failure with **InProcess** fallback.
 
 ### 10.4 Concurrency and serialization
 
@@ -436,13 +465,13 @@ Closing one connection must not imply others leave **Ready** unless the whole pr
 ### 10.6 Summary verdict
 
 - **Adequate for design:** §8–§9 together cover startup, shutdown, client paths, and connection-level errors.
-- **Refine before implement:** (1) strict vs fallback as explicit client branches; (2) lazy DB open vs **OpeningDB** state; (3) multi-connection serialization policy; (4) align coarse **NotStarted** failure edges with distinct exit codes in docs or code comments.
+- **Implementation notes:** **Multi-connection serialization** is implemented in the daemon (**`runSerialized`** around **`dispatch()`**). **Strict vs fallback** is implemented via **`SYSMLEGRAPH_WORKER_STRICT`** and gateway logic; §8.2 **Failed** state documents strict failure. Remaining doc refinements: explicit **lazy DB open** if the daemon ever defers Kuzu open to first request; align §8.1 coarse failure edges with §9.1 exit-code split in comments if desired.
 
 ---
 
 ## 11. Evaluation of interactions
 
-This section evaluates **how actors interact** (§7) under the proposed daemon model: concurrency, ordering, shared configuration, and failure propagation.
+This section evaluates **how actors interact** (§7) under the **implemented** daemon model: concurrency, ordering, shared configuration, and failure propagation.
 
 ### 11.1 Interaction matrix (two actors, same storage root)
 
@@ -528,5 +557,5 @@ sequenceDiagram
 | **Eliminates DB lock between CLI and MCP** | Yes, if **both** use daemon and **no** in-process opener for that root. |
 | **Safe under misconfiguration** | No — mixed daemon + in-process causes lock conflict; strict mode + docs reduce risk. |
 | **Concurrent MCP + CLI** | OK with daemon + serialization; undefined if mutating ops overlap without ordering. |
-| **Scripts (export-map pipeline)** | OK after scripts become daemon clients; until then, same risks as §7.1. |
+| **Scripts (export-map pipeline)** | **OK** when scripts use CLI/graph commands (gateway); avoid legacy raw Kuzu opens on the same DB. |
 | **Operational clarity** | Improve with **worker status**, consistent env, and a short “who must use daemon” table in INSTALL. |

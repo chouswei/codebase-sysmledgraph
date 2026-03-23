@@ -42,3 +42,5 @@ npm run build   # from source clone
 ```
 
 Optional: **`sysmledgraph worker start --detach`** with shared **`SYSMEDGRAPH_STORAGE_ROOT`** for CLI + MCP without Kuzu lock conflicts.
+
+**Later releases:** [release-notes-v0.8.1.md](release-notes-v0.8.1.md), [release-notes-v0.8.2.md](release-notes-v0.8.2.md).

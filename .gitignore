@@ -3,6 +3,7 @@ dist/
 *.log
 .env
 .npmrc
+.smoke-sysmledgraph-storage/
 .sysmledgraph/
 .sysmledgraph-*/
 .sysmledgraph-index-result.txt

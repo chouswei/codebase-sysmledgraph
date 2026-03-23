@@ -1,8 +1,8 @@
 # Plan: LSP Client Fixes, Indexing & Graph Worker
 
-**Indexing / LSP plan:** Phases 1–4 **complete** (v0.7.0). **Phase 5** (long-lived graph worker) is **implemented in this repo** (daemon, gateway, CLI, MCP). See **docs/DESIGN_LONG_LIVED_WORKER.md** and **docs/PLAN_IMPLEMENT_LONG_LIVED_WORKER.md**.
+**Indexing / LSP plan:** Phases 1–4 **complete** (v0.7.0). **Phase 5** (long-lived graph worker) is **implemented**. **Phase 6** (design-doc alignment with the shipped worker) is **complete**—**DESIGN_LONG_LIVED_WORKER.md** refresh, **PLAN_IMPLEMENT** as implementation log, **WORKER_CONTRACT.md**.
 
-**Released:** v0.8.0 — long-lived graph worker, gateway, CI, README/docs refresh. v0.7.0 — LSP in `lsp/`, MCP for Cursor, npm publish. (Earlier: v0.4.3.)
+**Released:** v0.8.2 — indexer **two-phase** edge write; optional **`SYSMLEGRAPH_INDEX_REFERENCES=1`** (MCP REFERENCES); **DESIGN** §8.2 **Failed** state; **docs/PUBLISH.md**. v0.8.1 — **WORKER_CONTRACT.md**, Phase 6, CI matrix, npm **`lsp/`** explicit **files**. v0.8.0 — long-lived worker, gateway, CI, README/docs refresh. v0.7.0 — LSP in `lsp/`, MCP, npm publish. (Earlier: v0.4.3.)
 
 ## Current Status
 
@@ -20,6 +20,9 @@
 - **✅ CLI exit fix:** (1) Explicit graph store close in `cmdAnalyze` (try/finally). (2) After successful analyze, CLI calls `process.exit(0)` so the process exits before Node/Kuzu teardown (avoids Windows access violation). Verified: `node scripts/index-and-map.mjs test/fixtures/sysml` completes with exit 0 and writes `graph-map.md`.
 - **✅ v0.7.0:** Independent LSP (`lsp/`, `setup-lsp`), MCP server for Cursor (docs, `.cursor/mcp.json`), npm publish (repository, files, prepublishOnly), root README and repo About.
 - **✅ Phase 5 (worker):** TCP daemon owns merged `graph.kuzu`; CLI/MCP use **gateway** when `worker.port` or **`SYSMLEGRAPH_WORKER_URL`** is set; `worker start` / `stop` / `status`; `graph export` / `graph map` and npm scripts delegate to the CLI (gateway-aware). See **docs/INSTALL.md**.
+- **✅ Phase 6 (docs):** **DESIGN_LONG_LIVED_WORKER.md** refreshed; **PLAN_IMPLEMENT_LONG_LIVED_WORKER.md** → implementation log; **WORKER_CONTRACT.md** added.
+- **✅ CI:** **`.github/workflows/ci.yml`** matrix **windows-latest** + **ubuntu-latest** (build, unit tests, **`test:daemon`**).
+- **✅ v0.8.2:** Indexer two-phase edge write; optional **`SYSMLEGRAPH_INDEX_REFERENCES=1`**; **DESIGN** §8.2 **Failed**; **docs/PUBLISH.md**.
 
 ## Plan
 
@@ -70,6 +73,24 @@
 - [x] CLI and MCP can use the same daemon concurrently (mutating ops serialized in daemon).
 - [x] `worker start` / `stop` / `status` implemented (see INSTALL; full exit-code matrix in design §9.4 partially).
 - [x] No regression when daemon is not configured (in-process unchanged).
+
+### Phase 6: Worker & design documentation alignment — ✅ Done
+
+**Delivered:** **DESIGN_LONG_LIVED_WORKER.md** (As-built + map + body refresh); **PLAN_IMPLEMENT_LONG_LIVED_WORKER.md** (implementation log + v1 checklist checked); **WORKER_CONTRACT.md** (operator NDJSON / files / CLI summary).
+
+| # | Task | Status |
+|---|------|--------|
+| 6.1 | **DESIGN — front matter** | ✅ |
+| 6.2 | **DESIGN — reframe body** | ✅ |
+| 6.3 | **DESIGN — mapping table** | ✅ |
+| 6.4 | **PLAN_IMPLEMENT** | ✅ Retitled **implementation log**; archive summary table |
+| 6.5 | **WORKER_CONTRACT.md** | ✅ |
+
+**Success criteria (Phase 6):**
+
+- [x] First screen of **DESIGN_LONG_LIVED_WORKER.md** answers what runs and which files are used.
+- [x] Shipped worker path not described as “proposed only.”
+- [x] **PLAN_IMPLEMENT_LONG_LIVED_WORKER.md** is not an open v1 todo list.
 
 ## MCP server for Cursor AI
 

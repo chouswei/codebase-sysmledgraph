@@ -167,6 +167,8 @@ Edges come from **symbols** (Package, PartDef, etc.). The indexer gets symbols v
 
 - **Optional MCP fallback:** Set **`SYSMEDGRAPH_USE_MCP_SYMBOLS=1`** and run index-and-map again. When the LSP returns no symbols, the indexer will try the **MCP** `getSymbols` tool (same sysml-v2-lsp server, different API). If the MCP returns symbols, they are mapped to nodes and edges. Note: spawning the MCP server from a script can be slow or hit init timeouts; if that happens, use Cursor MCP for ad‑hoc symbol queries and rely on the LSP for indexing when your LSP build supports documentSymbol.
 - **LSP behaviour:** Some builds of sysml-v2-lsp may not implement `documentSymbol` or may return a different response shape. We now pass `rootUri` and `workspaceFolders` in initialize and support both array and wrapped `{ data: [] }` responses; we also map LSP **SymbolKind** (number) to a label when `detail` is missing.
+- **Indexer write order:** Symbol nodes for **all** files are written **before** any edges, so **IN_PACKAGE** (and similar) edges still match when the parent symbol appears in a **later** file in load order.
+- **Cross-file REFERENCES (optional, slow):** Set **`SYSMLEGRAPH_INDEX_REFERENCES=1`** when indexing (CLI **`analyze`** / MCP **`indexDbGraph`**). After the normal pass, the indexer spawns the **sysml-v2-lsp** MCP server and calls **`getReferences`** per symbol; it adds **REFERENCES** edges only when **both** endpoint node ids already exist in the graph. Requires the same MCP install as **`npm run setup-lsp`** (or **`sysml-v2-lsp`** on `NODE_PATH`).
 
 ### 6.1 Long-lived graph worker (sysmledgraph, not sysml-v2-lsp)
 
@@ -183,6 +185,7 @@ The **sysmledgraph** MCP server and CLI can talk to a **TCP daemon** that is the
 ## 7. Debugging
 
 - **`DEBUG_SYSMLEGRAPH_SYMBOLS=1`** — Log to stderr per file whether symbols came from **LSP** or **MCP** (and count for MCP). Use when indexing to see which path is used.
+- **`SYSMLEGRAPH_INDEX_REFERENCES=1`** — After indexing symbols, run MCP **`getReferences`** to add **REFERENCES** edges (see §6).
 - **`DEBUG_LSP_NOTIFICATIONS=1`** — Log LSP `window/logMessage` and `window/showMessage` to stderr when using the LSP client.
 
 ---
@@ -207,6 +210,6 @@ The **sysmledgraph** MCP server and CLI can talk to a **TCP daemon** that is the
 | Talk to sysml-v2-lsp        | Content-Length client; in this repo: `createSysmlMcpClient()`            |
 | Use from Cursor             | Enable sysml-v2 in `.cursor/mcp.json` and call MCP tools                 |
 | Use from Node/scripts       | `createSysmlMcpClient()` and call methods; run from project root         |
-| Index and see the map       | LSP (`server.js`); kuzu built; `npm run index-and-map` (see §6)          |
+| Index and see the map       | LSP (`server.js`); kuzu built; `npm run index-and-map` (see §6); optional **`SYSMLEGRAPH_INDEX_REFERENCES=1`** for MCP REFERENCES edges |
 | Avoid Kuzu lock with CLI+MCP | Long-lived worker: §6.1; **docs/INSTALL.md**                             |
 | Validate a file             | `node scripts/validate-sysml-file.mjs <path>` (exit 0/1)                 |
