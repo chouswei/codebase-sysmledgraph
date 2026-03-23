@@ -1,6 +1,6 @@
 # Plan: LSP Client Fixes & Indexing
 
-**Released:** v0.4.3 (2026-03-19) — see `release-notes-v0.4.3.md`.
+**Status:** Plan complete. **Released:** v0.7.0 — independent LSP in `lsp/`, MCP for Cursor, npm publish, README/docs. (Earlier: v0.4.3.)
 
 ## Current Status
 
@@ -16,6 +16,7 @@
 - **✅ Phase 1 Complete:** LSP client returns symbols; graph has symbol nodes and edges (IN_DOCUMENT, IN_PACKAGE)
 - **✅ Phase 2 Complete:** LSP notification handler (e.g. `window/logMessage` when `DEBUG_LSP_NOTIFICATIONS=1`); indexed `modelbase-development/models/`; `graph-map.md` generated with full nodes and interconnection table
 - **✅ CLI exit fix:** (1) Explicit graph store close in `cmdAnalyze` (try/finally). (2) After successful analyze, CLI calls `process.exit(0)` so the process exits before Node/Kuzu teardown (avoids Windows access violation). Verified: `node scripts/index-and-map.mjs test/fixtures/sysml` completes with exit 0 and writes `graph-map.md`.
+- **✅ v0.7.0:** Independent LSP (`lsp/`, `setup-lsp`), MCP server for Cursor (docs, `.cursor/mcp.json`), npm publish (repository, files, prepublishOnly), root README and repo About.
 
 ## Plan
 
